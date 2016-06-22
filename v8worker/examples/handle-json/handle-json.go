@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/abhi-bit/v8worker"
+	"github.com/abhi-bit/eventing/v8worker"
 )
 
 // DiscardSendSync function

@@ -6,37 +6,34 @@ function OnUpdate(msg) {
   var obj = JSON.parse(msg);
   var val = JSON.stringify(obj);
 
-  log("Got from onUpdate Golang world: ", val);
+  //KV ops
+  credit_bucket[obj.name] = val;
 
-  // KV operation examples
+  var value = credit_bucket[obj.name];
 
-  // Sets KV pair into "beer_sample" bucket in Couchbase
-  beer_sample["test_key1"] = val;
+  delete credit_bucket[obj.name];
 
-  // Fetches Key from Couchbase
-  var key = beer_sample["test_key1"];
-
-  // Deletes a key from Couchbase
-  delete beer_sample["test_key1"];
-
-
+  /*
   // Queue operations:
-  val.processed = true;
-  val.send_email = true;
+  obj.processed = true;
+  obj.send_email = true;
 
   // Enqueue to a queue
-  kafka_queue["queue_test_key1"] = val;
+  var id = beanstalk_queue[JSON.stringify(obj)];
 
   // Dequeues an entry from queue
-  delete kafka_queue["queue_test_key1"];
+  delete beanstalk_queue[id];*/
+
 
   // n1ql operations:
-  var n1qlResult = n1ql["select * from `beer-sample`;"];
+  var n1qlResult = n1ql["select `beer-sample`.name from `beer-sample` where `beer-sample`.type == 'brewery' limit 10;"]
   var n1qlResultLength = n1qlResult.length;
-  for ( var i = 0; i < n1qlResultLength; i++) {
-      log(n1qlResult[i]);
-  }
+  for (i = 0; i < n1qlResultLength; i++) {
+      log(JSON.stringify(JSON.parse(n1qlResult[i])));
+  }*/
 }
+
+
 
 /*
  * Triggered when opcode DCP_DELETION is encountered
@@ -44,4 +41,16 @@ function OnUpdate(msg) {
 function OnDelete(msg) {
   var obj = JSON.parse(msg);
   log("Got from onDelete Golang world", JSON.stringify(obj));
+}
+
+function OnHTTPGet(req) {
+
+}
+
+function OnHTTPPost(req) {
+
+}
+
+function OnTimerEvent() {
+
 }

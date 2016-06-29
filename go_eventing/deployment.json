@@ -1,0 +1,21 @@
+{
+   "buckets" : [
+      {
+         "bucket_name" : "default",
+         "endpoint" : "172.16.12.33",
+         "alias" : "credit_bucket"
+      }
+   ],
+   "queue" : [
+      {
+         "queue_name" : "beanstalk",
+         "endpoint" : "127.0.0.1:11300",
+         "alias" : "beanstalk_queue"
+      }
+   ],
+   "n1ql" : [{
+          "bucket_name" : "default",
+          "endpoint" : "172.16.12.49",
+          "alias" : "n1ql_blr_cluster"
+   }]
+}

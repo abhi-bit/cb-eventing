@@ -8,7 +8,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -175,14 +174,11 @@ func mf(err error, msg string) {
 	}
 }
 
-// DiscardSendSync function
-func DiscardSendSync(msg string) string { return "" }
-
 func runWorker() {
-	var numCPUs = runtime.NumCPU()
+	//var numCPUs = runtime.NumCPU()
 	var wg sync.WaitGroup
 
-	wg.Add(numCPUs)
+	wg.Add(1)
 
 	go func() {
 		for {
@@ -193,43 +189,37 @@ func runWorker() {
 		}
 	}()
 
-	for i := 0; i < numCPUs; i++ {
-		logging.Infof("Spawned goroutine %d\n", i)
-		go func() {
-			defer wg.Done()
-			handle := v8.New(func(msg string) {
-				/*var message mc.DcpEvent
-				if err := json.Unmarshal([]byte(msg), &message); err == nil {
+	go func() {
+		defer wg.Done()
+		handle := v8.New()
+		file, _ := ioutil.ReadFile("handle_event.js")
+		handle.Load("handle_event.js", string(file))
+		for msg := range rch {
+			atomic.AddUint64(&ops, 1)
+			m := msg[1].(*mc.DcpEvent)
+			if m.Opcode == mcd.DCP_MUTATION {
+				/*msg, err := json.Marshal(m)
+				if err != nil {
+					logging.Infof("Failed to marshal event: %#v\n", m)
+					continue
 				}*/
-				return
-			}, DiscardSendSync)
-			file, _ := ioutil.ReadFile("handle_event.js")
-			handle.Load("handle_event.js", string(file))
-			for msg := range rch {
-				m := msg[1].(*mc.DcpEvent)
-				if m.Opcode == mcd.DCP_MUTATION {
-					msg, err := json.Marshal(m)
-					if err != nil {
-						logging.Infof("Failed to marshal event: %#v\n", m)
-						continue
-					}
-					if err := handle.SendUpdate(string(msg)); err == nil {
-						atomic.AddUint64(&ops, 1)
-					}
-				} else if m.Opcode == mcd.DCP_DELETION {
-					msg, err := json.Marshal(m)
-					if err != nil {
-						logging.Infof("Failed to marshal delete event: %#v\n", m)
-						continue
-					}
-					if err := handle.SendDelete(string(msg)); err == nil {
-						atomic.AddUint64(&ops, 1)
-					}
+				handle.SendUpdate(string(m.Value)) /*; err != nil {
+					logging.Infof("Failed to send %s to v8\n", string(m.Key))
+				}*/
+			} else if m.Opcode == mcd.DCP_DELETION {
+				msg, err := json.Marshal(m)
+				if err != nil {
+					logging.Infof("Failed to marshal delete event: %#v\n", m)
+					continue
+				}
+				if err := handle.SendDelete(string(msg)); err == nil {
+					atomic.AddUint64(&ops, 1)
 				}
 			}
-			handle.TerminateExecution()
-		}()
-	}
+		}
+		handle.TerminateExecution()
+	}()
+
 	wg.Wait()
 }
 

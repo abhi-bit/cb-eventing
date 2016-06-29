@@ -18,8 +18,8 @@ int worker_load(worker* w, char* name_s, char* source_s);
 
 const char* worker_last_exception(worker* w);
 
-int worker_send_doc_update(worker* w, const char* msg);
-int worker_send_doc_delete(worker* w, const char* msg);
+int worker_send_update(worker* w, const char* msg);
+int worker_send_delete(worker* w, const char* msg);
 
 void worker_dispose(worker* w);
 void worker_terminate_execution(worker* w);

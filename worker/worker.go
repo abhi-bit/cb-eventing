@@ -1,9 +1,9 @@
-package v8worker
+package worker
 
 /*
-#cgo LDFLAGS: -L/Users/asingh/v8_libs/ -lv8_binding
+#cgo LDFLAGS: -L/Users/asingh/.cbdepscache/lib/ -lv8_binding
 #include <stdlib.h>
-#include "binding.h"
+#include "binding/worker.h"
 */
 import "C"
 import "errors"

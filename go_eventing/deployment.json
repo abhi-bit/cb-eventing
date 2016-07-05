@@ -1,8 +1,8 @@
 {
    "buckets" : [
       {
-         "bucket_name" : "default",
-         "endpoint" : "172.16.12.33",
+         "bucket_name" : "beer-sample",
+         "endpoint" : "172.16.12.49",
          "alias" : "credit_bucket"
       }
    ],

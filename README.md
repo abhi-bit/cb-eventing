@@ -1,11 +1,9 @@
-Couchbase Eventing:
-==================
+## Couchbase Eventing:
 
 Effort to embed application server layer within Couchbase
 
 
-Next set of items to finish:
-===========================
+#### Next set of items to finish:
 
 * Detect if KV blob is json using meta flag and convert it to native js json.
   For non-json or binary blob users could leverage ArrayBuffers and they
@@ -41,8 +39,8 @@ note: we aren't return anything explicitly, v8 might need to inject some code
 
 * Support for multiple bucket/queue/n1ql/view definitions in deployment.cfg
 
-Bugs:
-====
+
+#### Bugs:
 
 * BucketSet isn't setting up document flags correctly i.e. even when it's setting a
   JSON blob in KV, doc flag is 0x0. Ideally it should be set to 0x2000006

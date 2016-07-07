@@ -3,7 +3,7 @@ package worker
 /*
 #cgo LDFLAGS: -L/Users/asingh/.cbdepscache/lib/ -lv8_binding
 #include <stdlib.h>
-#include "binding/worker.h"
+#include "binding/binding.h"
 */
 import "C"
 import "errors"
@@ -124,11 +124,15 @@ func (w *Worker) SendDelete(m string) error {
 }
 
 // SendUpdate sends DCP_MUTATION to v8
-func (w *Worker) SendUpdate(m string) error {
-	msg := C.CString(string(m))
-	defer C.free(unsafe.Pointer(msg))
+func (w *Worker) SendUpdate(v string, m string, t string) error {
+	value := C.CString(string(v))
+	defer C.free(unsafe.Pointer(value))
+	meta := C.CString(string(m))
+	defer C.free(unsafe.Pointer(meta))
+	docType := C.CString(string(t))
+	defer C.free(unsafe.Pointer(docType))
 
-	r := C.worker_send_update(w.worker.cWorker, msg)
+	r := C.worker_send_update(w.worker.cWorker, value, meta, docType)
 	if r != 0 {
 		errStr := C.GoString(C.worker_last_exception(w.worker.cWorker))
 		return errors.New(errStr)

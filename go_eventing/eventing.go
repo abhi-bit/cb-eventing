@@ -8,6 +8,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,18 @@ import (
 	mc "github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
 )
+
+const (
+	// JSONType marker for JSON Dcp events
+	JSONType = 0x2000000
+)
+
+type eventMeta struct {
+	Key    string `json:"key"`
+	Type   string `json:"type"`
+	Cas    string `json:"cas"`
+	Expiry string `json:"expiry"`
+}
 
 func argParse() string {
 	var buckets string
@@ -117,14 +130,41 @@ func runWorker() {
 
 		file, _ := ioutil.ReadFile("handle_event.js")
 		handle.Load("handle_event.js", string(file))
-		fmt.Printf("")
+
 		for msg := range rch {
 			atomic.AddUint64(&ops, 1)
+
 			m := msg[1].(*mc.DcpEvent)
 			if m.Opcode == mcd.DCP_MUTATION {
-				handle.SendUpdate(string(m.Value)) /*; err != nil {
-					logging.Infof("Failed to send %s to v8\n", string(m.Key))
-				}*/
+				if m.Flags == JSONType {
+					meta := eventMeta{Key: string(m.Key),
+						Type:   "json",
+						Cas:    strconv.FormatUint(m.Cas, 16),
+						Expiry: fmt.Sprint(m.Expiry),
+					}
+					mEvent, err := json.Marshal(meta)
+					if err == nil {
+						//TODO: check for return code of SendUpdate
+						handle.SendUpdate(string(m.Value), string(mEvent), "json")
+					} else {
+						logging.Infof("Failed to marshal update event: %#v\n", meta)
+					}
+				} else {
+					meta := eventMeta{Key: string(m.Key),
+						Type:   "non-json",
+						Cas:    strconv.FormatUint(m.Cas, 16),
+						Expiry: fmt.Sprint(m.Expiry),
+					}
+					mEvent, err := json.Marshal(meta)
+					if err == nil {
+						//TODO: check for return code of SendUpdate
+						handle.SendUpdate(string(m.Value), string(mEvent), "non-json")
+					} else {
+						logging.Infof("Failed to marshal update event: %#v\n", meta)
+					}
+
+				}
+
 			} else if m.Opcode == mcd.DCP_DELETION {
 				msg, err := json.Marshal(m)
 				if err != nil {

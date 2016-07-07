@@ -1,58 +1,47 @@
-/*function n1ql(strings, ...values) {
-    var stringsLength = strings.length;
-    var query = "";
-    for (i = 0; i < stringsLength  - 1; i++) {
-        query = query.concat(strings[i]);
-        query = query.concat(values[i]);
-    }
-
-    return query;
-    //return n1ql_blr_cluster[query];
-}*/
-
 /* Triggered when opcode DCP_MUTATION is encountered
 * Getting mutations from default bucket
 * writing KV pairs to "beer_sample" bucket
 */
-function OnUpdate(msg) {
-  var obj = JSON.parse(msg);
-  var val = JSON.stringify(obj);
+function OnUpdate(doc, meta) {
+  log("doc id: ", meta.key);
 
-  //log(val);
-  //KV ops
+  if (meta.type === "json") {
+    log("doc.uuid field: ", doc.uuid);
 
-  credit_bucket[obj.name] = val;
+    //KV ops
+    credit_bucket[doc.uuid] = JSON.stringify(doc);
+    var value = credit_bucket[doc.uuid];
+    log("value received from bucket get call: ", value);
+    delete credit_bucket[doc.uuid];
 
-  var value = credit_bucket[obj.name];
+    /*
+    // Queue operations:
+    obj.processed = true;
+    obj.send_email = true;
 
-  delete credit_bucket[obj.name];
+    // Enqueue to a queue
+    var id = beanstalk_queue[JSON.stringify(obj)];
 
-  /*
-  // Queue operations:
-  obj.processed = true;
-  obj.send_email = true;
+    // Dequeues an entry from queue
+    delete beanstalk_queue[id];
+    */
 
-  // Enqueue to a queue
-  var id = beanstalk_queue[JSON.stringify(obj)];
 
-  // Dequeues an entry from queue
-  delete beanstalk_queue[id];
-  */
+    // N1QL operations
+    var bucket = "beer-sample";
+    var limit = 10;
+    var type = "brewery";
 
-  var bucket = "beer-sample";
-  var limit = 10;
-  var type = "brewery";
+    // Support for both TTL based syntax and typical parenthesis enclosed query
+    // n1ql`<query>` or n1ql("<query>")
 
-  var n1qlResult = n1ql`select ${bucket}.name from ${bucket} where ${bucket}.type == ${type} limit ${limit}`;
-  log(n1qlResult);
-  //var n1qlResult = n1ql("select `beer-sample`.name from `beer-sample` where `beer-sample`.type == 'brewery' limit 1;");
-  //log(n1qlResult);
-  // n1ql operations:
-  /*var n1qlResult = n1ql_blr_cluster["select `beer-sample`.name from `beer-sample` where `beer-sample`.type == 'brewery' limit 1;"]
-  var n1qlResultLength = n1qlResult.length;
-  for (i = 0; i < n1qlResultLength; i++) {
-      log(JSON.stringify(JSON.parse(n1qlResult[i])));
-  }*/
+    //var n1qlResult = n1ql`select ${bucket}.name from ${bucket} where ${bucket}.type == '${type}' limit ${limit}`;
+    var n1qlResult = n1ql("select ${bucket}.name from ${bucket} where ${bucket}.type == '${type}' limit ${limit}");
+    var n1qlResultLength = n1qlResult.length;
+    for (i = 0; i < n1qlResultLength; i++) {
+        log("n1ql query response row: ", n1qlResult[i]);
+    }
+  }
 }
 
 /*
@@ -60,7 +49,7 @@ function OnUpdate(msg) {
  */
 function OnDelete(msg) {
   var obj = JSON.parse(msg);
-  log("Got from onDelete Golang world", JSON.stringify(obj));
+  log("Got from onDelete Golang world", msg);
 }
 
 function OnHTTPGet(req) {

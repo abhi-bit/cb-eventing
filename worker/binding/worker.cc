@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstring>
+#include <regex>
 
 #include "parse_deployment.h"
 #include "cluster.h"
@@ -13,6 +14,25 @@ const char* ToCString(const String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
 }
 
+const char* ToJson(Isolate* isolate, Handle<Value> object) {
+  HandleScope handle_scope(isolate);
+
+  Local<Context> context = isolate->GetCurrentContext();
+  Local<Object> global = context->Global();
+
+  Local<Object> JSON = global->Get(String::NewFromUtf8(isolate, "JSON"))->ToObject();
+  Local<Function> JSON_stringify = Local<Function>::Cast(
+                                          JSON->Get(
+                                              String::NewFromUtf8(isolate, "stringify")));
+
+  Local<Value> result;
+  Local<Value> args[1];
+  args[0] = { object };
+  result = JSON_stringify->Call(context->Global(), 1, args);
+  String::Utf8Value str(result->ToString());
+  return ToCString(str);
+}
+
 void Print(const FunctionCallbackInfo<Value>& args) {
   bool first = true;
   for (int i = 0; i < args.Length(); i++) {
@@ -23,7 +43,7 @@ void Print(const FunctionCallbackInfo<Value>& args) {
       printf(" ");
     }
     String::Utf8Value str(args[i]);
-    const char* cstr = ToCString(str);
+    const char* cstr = ToJson(args.GetIsolate(), args[i]);
     printf("%s", cstr);
   }
   printf("\n");
@@ -176,16 +196,33 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
 
   TryCatch try_catch;
 
-  string builtin_content;
-  LoadBuiltins(&builtin_content);
+  string script_to_execute;
+  string content;
+  LoadBuiltins(&content);
 
-  builtin_content.append(source_s);
+  content.append(source_s);
+
+  // TODO: Figure out if there is a cleaner way to do preprocessing for n1ql
+  // Converting n1ql("<query>") to tagged template literal i.e. n1ql`<query>`
+  std::regex n1ql_ttl("(n1ql\\(\")(.*)(\"\\))");
+  std::smatch m;
+
+  while (std::regex_search(content, m, n1ql_ttl)) {
+      script_to_execute += m.prefix();
+      std::regex re_prefix("n1ql\\(\"");
+      std::regex re_suffix("\"\\)");
+      script_to_execute += std::regex_replace(m[1].str(), re_prefix, "n1ql`");
+      script_to_execute += m[2].str();
+      script_to_execute += std::regex_replace(m[3].str(), re_suffix, "`");
+      content = m.suffix();
+  }
+  script_to_execute += content;
 
   Local<String> name = String::NewFromUtf8(GetIsolate(), name_s);
   Local<String> source = String::NewFromUtf8(GetIsolate(),
-                                             builtin_content.c_str());
+                                             script_to_execute.c_str());
 
-  cout << "script to execute: " << source_s << endl;
+  //cout << "script to execute: " << script_to_execute << endl;
   ScriptOrigin origin(name);
 
   if (!ExecuteScript(source))
@@ -277,7 +314,7 @@ const char* Worker::WorkerVersion() {
   return V8::GetVersion();
 }
 
-int Worker::SendUpdate(const char *msg) {
+int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
   Locker locker(GetIsolate());
   Isolate::Scope isolate_scope(GetIsolate());
   HandleScope handle_scope(GetIsolate());
@@ -285,15 +322,27 @@ int Worker::SendUpdate(const char *msg) {
   Local<Context> context = Local<Context>::New(GetIsolate(), context_);
   Context::Scope context_scope(context);
 
+  //cout << "value: " << value << " meta: " << meta << " type: " << type << endl;
   TryCatch try_catch(GetIsolate());
 
-  Local<Value> args[1];
-  args[0] = String::NewFromUtf8(GetIsolate(), msg);
+  Handle<Value> args[2];
+  string doc_type(type);
+  if (doc_type.compare("json") == 0) {
+      args[0] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), value));
+  }
+  else {
+      args[0] = String::NewFromUtf8(GetIsolate(), value);
+  }
 
-  assert(!try_catch.HasCaught());
+  args[1] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), meta));
+
+  if(try_catch.HasCaught()) {
+    string last_exception = ExceptionString(GetIsolate(), &try_catch);
+    printf("Logged: %s\n", last_exception.c_str());
+  }
 
   Local<Function> on_doc_update = Local<Function>::New(GetIsolate(), on_update_);
-  on_doc_update->Call(context, context->Global(), 1, args);
+  on_doc_update->Call(context->Global(), 2, args);
 
   if (try_catch.HasCaught()) {
     //last_exception = ExceptionString(GetIsolate(), &try_catch);
@@ -329,16 +378,17 @@ int Worker::SendDelete(const char *msg) {
   return 0;
 }
 
-int worker_send_update(Worker* w, const char* msg) {
+int worker_send_update(worker* w, const char* value,
+                       const char* meta, const char* type) {
 
   // TODO: return proper errorcode
-  return w->SendUpdate(msg);
+  return w->w->SendUpdate(value, meta, type);
 }
 
-int worker_send_delete(Worker* w, const char* msg) {
+int worker_send_delete(worker* w, const char* msg) {
 
   // TODO: return proper errorcode
-  return w->SendDelete(msg);
+  return w->w->SendDelete(msg);
 }
 
 static ArrayBufferAllocator array_buffer_allocator;
@@ -350,21 +400,22 @@ void v8_init() {
   V8::Initialize();
 }
 
-Worker* worker_new(int table_index) {
-  Worker* w = new Worker(table_index);
-  return w;
+worker* worker_new(int table_index) {
+  worker* wrkr = (worker*)malloc(sizeof(worker));
+  wrkr->w = new Worker(table_index);
+  return wrkr;
 }
 
-const char* worker_last_exception(Worker* w) {
-    return w->WorkerLastException();
+const char* worker_last_exception(worker* w) {
+    return w->w->WorkerLastException();
 }
 
-int worker_load(Worker* w, char* name_s, char* source_s) {
-    return w->WorkerLoad(name_s, source_s);
+int worker_load(worker* w, char* name_s, char* source_s) {
+    return w->w->WorkerLoad(name_s, source_s);
 }
 
-void worker_dispose(Worker* w) {
-    w->WorkerDispose();
+void worker_dispose(worker* w) {
+    w->w->WorkerDispose();
 }
 
 void Worker::WorkerDispose() {
@@ -373,8 +424,8 @@ void Worker::WorkerDispose() {
   // TODO:: Cleanup resources neatly
 }
 
-void worker_terminate_execution(Worker* w) {
-    w->WorkerTerminateExecution();
+void worker_terminate_execution(worker* w) {
+    w->w->WorkerTerminateExecution();
 }
 
 void Worker::WorkerTerminateExecution() {

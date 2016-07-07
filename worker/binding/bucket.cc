@@ -172,19 +172,6 @@ Local<ObjectTemplate> Bucket::MakeBucketMapTemplate(
   return handle_scope.Escape(result);
 }
 
-/*
- static Local<String> createUtf8String(Isolate *isolate, const char *str) {
-  return String::NewFromUtf8(isolate, str,
-          NewStringType::kNormal).ToLocalChecked();
-}
-*/
-
-/*
-string ObjectToString(Local<Value> value) {
-  String::Utf8Value utf8_value(value);
-  return string(*utf8_value);
-}
-*/
 
 N1QL::N1QL(Worker* w,
           const char* bname, const char* ep,
@@ -312,8 +299,8 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
   int index = 0;
   for (auto row : q1) {
       result->Set(Integer::New(info.GetIsolate(), index),
-                  createUtf8String(info.GetIsolate(),
-                         row.json().to_string().c_str()));
+                  v8::JSON::Parse(createUtf8String(info.GetIsolate(),
+                         row.json().to_string().c_str())));
       index++;
   }
 

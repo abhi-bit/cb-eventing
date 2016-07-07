@@ -5,6 +5,8 @@
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
 
+#include "binding.h"
+
 using namespace v8;
 using namespace std;
 
@@ -14,6 +16,11 @@ extern "C" {
 
 class Bucket;
 class N1QL;
+class Worker;
+
+struct worker_s {
+    Worker* w;
+};
 
 class ArrayBufferAllocator : public ArrayBuffer::Allocator {
  public:
@@ -34,7 +41,7 @@ class Worker {
     const char* WorkerLastException();
     const char* WorkerVersion();
 
-    int SendUpdate(const char* msg);
+    int SendUpdate(const char* value, const char* meta, const char* doc_type);
     int SendDelete(const char* msg);
 
     void WorkerDispose();
@@ -65,7 +72,7 @@ class Worker {
 
 const char* worker_version();
 
-void v8_init();
+/*void v8_init();
 
 Worker* worker_new(int table_index);
 
@@ -77,7 +84,7 @@ int worker_send_update(Worker* w, const char* msg);
 int worker_send_delete(Worker* w, const char* msg);
 
 void worker_dispose(Worker* w);
-void worker_terminate_execution(Worker* w);
+void worker_terminate_execution(Worker* w);*/
 
 #ifdef __cplusplus
 } // extern "C"

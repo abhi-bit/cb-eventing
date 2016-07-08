@@ -1,10 +1,10 @@
-Couchbase Eventing:
+## Couchbase Eventing:
 ==================
 
 Effort to embed application server layer within Couchbase
 
 
-Next set of items to finish:
+#### Next set of items to finish:
 ===========================
 
 * NamedPropertyHandlerConfiguration interceptor functions need to be static, this puts a lot of

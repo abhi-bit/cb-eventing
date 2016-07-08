@@ -170,6 +170,7 @@ Worker::Worker(int tindex) {
           }
       }
   }
+  r = new HTTPResponse(this);
 }
 
 Worker::~Worker() {
@@ -234,7 +235,6 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   Local<String> on_delete =
       String::NewFromUtf8(GetIsolate(), "OnDelete", NewStringType::kNormal)
         .ToLocalChecked();
-
   Local<String> on_http_get =
       String::NewFromUtf8(GetIsolate(), "OnHTTPGet", NewStringType::kNormal)
         .ToLocalChecked();
@@ -247,11 +247,20 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
 
   Local<Value> on_update_val;
   Local<Value> on_delete_val;
+  Local<Value> on_http_get_val;
+  Local<Value> on_http_post_val;
+  Local<Value> on_timer_event_val;
 
   if (!context->Global()->Get(context, on_update).ToLocal(&on_update_val) ||
       !context->Global()->Get(context, on_delete).ToLocal(&on_delete_val) ||
+      !context->Global()->Get(context, on_http_get).ToLocal(&on_http_get_val) ||
+      !context->Global()->Get(context, on_http_post).ToLocal(&on_http_post_val) ||
+      !context->Global()->Get(context, on_timer_event).ToLocal(&on_timer_event_val) ||
       !on_update_val->IsFunction() ||
-      !on_delete_val->IsFunction()) {
+      !on_delete_val->IsFunction() ||
+      !on_http_get_val->IsFunction() ||
+      !on_http_post_val->IsFunction() ||
+      !on_timer_event_val->IsFunction()) {
       return false;
   }
 
@@ -261,7 +270,16 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   Local<Function> on_delete_fun = Local<Function>::Cast(on_delete_val);
   on_delete_.Reset(GetIsolate(), on_delete_fun);
 
-  //TODO: return proper errorcode
+  Local<Function> on_http_get_fun = Local<Function>::Cast(on_http_get_val);
+  on_http_get_.Reset(GetIsolate(), on_http_get_fun);
+
+  Local<Function> on_http_post_fun = Local<Function>::Cast(on_http_post_val);
+  on_http_post_.Reset(GetIsolate(), on_http_post_fun);
+
+  Local<Function> on_timer_event_fun = Local<Function>::Cast(on_timer_event_val);
+  on_timer_event_.Reset(GetIsolate(), on_timer_event_fun);
+
+  //TODO: return proper exit codes
   if (!b->Initialize(this, &bucket, source)) {
     cerr << "Error initializing bucket handler" << endl;
     exit(2);
@@ -312,6 +330,37 @@ const char* worker_version() {
 
 const char* Worker::WorkerVersion() {
   return V8::GetVersion();
+}
+
+void PrintMap(map<string, string> obj) {
+  for(auto elem : obj)
+    cout << elem.first << " " << elem.second << endl;
+}
+
+const char* Worker::SendHTTPGet(const char* http_req) {
+  Locker locker(GetIsolate());
+  Isolate::Scope isolate_scope(GetIsolate());
+  HandleScope handle_scope(GetIsolate());
+
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+  Context::Scope context_scope(context);
+
+  TryCatch try_catch(GetIsolate());
+
+  Handle<Value> args[2];
+  args[0] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), http_req));
+  args[1] = this->r->WrapHTTPResponseMap();
+
+  if(try_catch.HasCaught()) {
+    string last_exception = ExceptionString(GetIsolate(), &try_catch);
+    printf("Logged: %s\n", last_exception.c_str());
+  }
+
+  Local<Function> on_http_get = Local<Function>::New(GetIsolate(), on_http_get_);
+
+  on_http_get->Call(context, context->Global(), 2, args);
+
+  return this->r->ConvertMapToJson();
 }
 
 int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
@@ -389,6 +438,10 @@ int worker_send_delete(worker* w, const char* msg) {
 
   // TODO: return proper errorcode
   return w->w->SendDelete(msg);
+}
+
+const char* worker_send_http_get(worker* w, const char* uri_path) {
+  return w->w->SendHTTPGet(uri_path);
 }
 
 static ArrayBufferAllocator array_buffer_allocator;

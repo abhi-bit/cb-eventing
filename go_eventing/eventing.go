@@ -8,6 +8,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,11 +27,18 @@ const (
 	JSONType = 0x2000000
 )
 
+var handle *worker.Worker
+
 type eventMeta struct {
 	Key    string `json:"key"`
 	Type   string `json:"type"`
 	Cas    string `json:"cas"`
 	Expiry string `json:"expiry"`
+}
+
+type httpRequest struct {
+	Path string `json:"path"`
+	Host string `json:"host"`
 }
 
 func argParse() string {
@@ -84,6 +92,19 @@ func usage() {
 	flag.PrintDefaults()
 }
 
+func handleJsRequests(w http.ResponseWriter, r *http.Request) {
+	req := httpRequest{
+		Path: r.URL.Path,
+		Host: r.URL.Host,
+	}
+	request, err := json.Marshal(req)
+	if err != nil {
+		logging.Infof("json marshalling of http request failed")
+	}
+	res := handle.SendHTTPGet(string(request))
+	fmt.Fprintf(w, "res: %s\n", res)
+}
+
 func main() {
 	cluster := argParse()
 
@@ -106,7 +127,16 @@ func main() {
 	if options.stats > 0 {
 		tick = time.Tick(time.Millisecond * time.Duration(options.stats))
 	}
-	runWorker()
+
+	go func() {
+		runWorker()
+	}()
+
+	// http callbacks for application
+	regexpHandler := &RegexpHandler{}
+	regexpHandler.HandleFunc(regexp.MustCompile("/*"), handleJsRequests)
+
+	http.ListenAndServe("localhost:6061", regexpHandler)
 }
 
 func runWorker() {
@@ -126,7 +156,7 @@ func runWorker() {
 		defer wg.Done()
 
 		// Spawns up a brand new runtime env on top of V8
-		handle := worker.New()
+		handle = worker.New()
 
 		file, _ := ioutil.ReadFile("handle_event.js")
 		handle.Load("handle_event.js", string(file))
@@ -137,11 +167,13 @@ func runWorker() {
 			m := msg[1].(*mc.DcpEvent)
 			if m.Opcode == mcd.DCP_MUTATION {
 				if m.Flags == JSONType {
+
 					meta := eventMeta{Key: string(m.Key),
 						Type:   "json",
 						Cas:    strconv.FormatUint(m.Cas, 16),
 						Expiry: fmt.Sprint(m.Expiry),
 					}
+
 					mEvent, err := json.Marshal(meta)
 					if err == nil {
 						//TODO: check for return code of SendUpdate
@@ -150,11 +182,13 @@ func runWorker() {
 						logging.Infof("Failed to marshal update event: %#v\n", meta)
 					}
 				} else {
+
 					meta := eventMeta{Key: string(m.Key),
-						Type:   "non-json",
+						Type:   "base64",
 						Cas:    strconv.FormatUint(m.Cas, 16),
 						Expiry: fmt.Sprint(m.Expiry),
 					}
+
 					mEvent, err := json.Marshal(meta)
 					if err == nil {
 						//TODO: check for return code of SendUpdate
@@ -166,6 +200,7 @@ func runWorker() {
 				}
 
 			} else if m.Opcode == mcd.DCP_DELETION {
+
 				msg, err := json.Marshal(m)
 				if err != nil {
 					logging.Infof("Failed to marshal delete event: %#v\n", m)

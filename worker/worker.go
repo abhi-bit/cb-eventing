@@ -144,3 +144,12 @@ func (w *Worker) SendUpdate(v string, m string, t string) error {
 func (w *Worker) TerminateExecution() {
 	C.worker_terminate_execution(w.worker.cWorker)
 }
+
+// SendHTTPGet sends http request to JS world
+func (w *Worker) SendHTTPGet(r string) string {
+	req := C.CString(string(r))
+	defer C.free(unsafe.Pointer(req))
+
+	res := C.worker_send_http_get(w.worker.cWorker, req)
+	return C.GoString(res)
+}

@@ -4,9 +4,12 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <string>
 #include <vector>
 
 #include <rapidjson/document.h>
+#include <rapidjson/writer.h>
+#include <rapidjson/stringbuffer.h>
 
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
@@ -20,8 +23,10 @@
 using namespace std;
 using namespace v8;
 
+map<string, string> Worker::http_response;
 Couchbase::Client* Bucket::bucket_conn_obj;
 Couchbase::Client* N1QL::n1ql_conn_obj;
+Isolate* HTTPResponse::http_isolate_;
 
 static Local<String> createUtf8String(Isolate *isolate, const char *str) {
   return String::NewFromUtf8(isolate, str,
@@ -31,6 +36,25 @@ static Local<String> createUtf8String(Isolate *isolate, const char *str) {
 string ObjectToString(Local<Value> value) {
   String::Utf8Value utf8_value(value);
   return string(*utf8_value);
+}
+
+string ToString(Isolate* isolate, Handle<Value> object) {
+  HandleScope handle_scope(isolate);
+
+  Local<Context> context = isolate->GetCurrentContext();
+  Local<Object> global = context->Global();
+
+  Local<Object> JSON = global->Get(String::NewFromUtf8(isolate, "JSON"))->ToObject();
+  Local<Function> JSON_stringify = Local<Function>::Cast(
+                                          JSON->Get(
+                                              String::NewFromUtf8(isolate, "stringify")));
+
+  Local<Value> result;
+  Local<Value> args[1];
+  args[0] = { object };
+  result = JSON_stringify->Call(context->Global(), 1, args);
+  //String::Utf8Value str(result->ToString());
+  return ObjectToString(result);
 }
 
 Bucket::Bucket(Worker* w,
@@ -305,4 +329,106 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
   }
 
   info.GetReturnValue().Set(result);
+}
+
+HTTPResponse::HTTPResponse(Worker* w) {
+  HTTPResponse::http_isolate_ = w->GetIsolate();
+  isolate_ = w->GetIsolate();
+  context_.Reset(isolate_, w->context_);
+  worker = w;
+
+  HandleScope handle_scope(GetIsolate());
+
+  Local<Context> context = Local<Context>::New(GetIsolate(), w->context_);
+  context_.Reset(GetIsolate(), context);
+
+  Context::Scope context_scope(context);
+
+  InstallHTTPResponseMaps();
+}
+
+HTTPResponse::~HTTPResponse() {
+    context_.Reset();
+}
+
+void HTTPResponse::HTTPResponseSet(Local<Name> name, Local<Value> value_obj,
+                                const PropertyCallbackInfo<Value>& info) {
+  if (name->IsSymbol()) return;
+
+  string key = ObjectToString(Local<String>::Cast(name));
+  string value = ToString(HTTPResponse::http_isolate_, value_obj);
+
+  Worker::http_response[key] = value;
+
+  info.GetReturnValue().Set(value_obj);
+}
+
+Local<ObjectTemplate> HTTPResponse::MakeHTTPResponseMapTemplate(
+    Isolate* isolate) {
+  EscapableHandleScope handle_scope(isolate);
+
+  Local<ObjectTemplate> result = ObjectTemplate::New(isolate);
+  result->SetInternalFieldCount(1);
+  result->SetHandler(NamedPropertyHandlerConfiguration(NULL,
+                                                       HTTPResponseSet));
+
+  return handle_scope.Escape(result);
+}
+
+Local<Object> HTTPResponse::WrapHTTPResponseMap() {
+  EscapableHandleScope handle_scope(GetIsolate());
+
+  if (http_response_map_template_.IsEmpty()) {
+    Local<ObjectTemplate> raw_template = MakeHTTPResponseMapTemplate(GetIsolate());
+    http_response_map_template_.Reset(GetIsolate(), raw_template);
+  }
+  Local<ObjectTemplate> templ =
+      Local<ObjectTemplate>::New(GetIsolate(), http_response_map_template_);
+
+  Local<Object> result =
+      templ->NewInstance(GetIsolate()->GetCurrentContext()).ToLocalChecked();
+
+  Local<External> map_ptr = External::New(GetIsolate(), &Worker::http_response);
+
+  result->SetInternalField(0, map_ptr);
+
+  return handle_scope.Escape(result);
+}
+
+bool HTTPResponse::InstallHTTPResponseMaps() {
+  HandleScope handle_scope(GetIsolate());
+
+  Local<Object> http_response_obj = WrapHTTPResponseMap();
+
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+
+  cout << "Registering handler for http_response as 'res' " << endl;
+  // Set the options object as a property on the global object.
+  context->Global()
+      ->Set(context,
+            String::NewFromUtf8(GetIsolate(),
+                                "res",
+                                NewStringType::kNormal)
+                .ToLocalChecked(),
+            http_response_obj)
+      .FromJust();
+
+  return true;
+}
+
+const char* HTTPResponse::ConvertMapToJson() {
+  rapidjson::StringBuffer s;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(s);
+
+  writer.StartObject();
+
+  for (auto elem : Worker::http_response) {
+      writer.Key(elem.first.c_str());
+      writer.String(elem.second.c_str());
+  }
+
+  writer.EndObject();
+  Worker::http_response.clear();
+
+  return s.GetString();
 }

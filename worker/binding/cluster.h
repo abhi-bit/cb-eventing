@@ -16,9 +16,11 @@ class Bucket {
     Bucket(Worker* w, const char* bname, const char* ep, const char* alias);
     ~Bucket();
 
+    // TODO: script not needed here
     virtual bool Initialize(Worker* w,
                             map<string, string>* bucket,
                             Local<String> script);
+    // TODO: cleanup SendUpdate/SendDelete
     int SendUpdate(Worker* w, const char *msg);
     int SendDelete(Worker* w, const char *msg);
 
@@ -31,12 +33,14 @@ class Bucket {
     static Couchbase::Client* bucket_conn_obj;
 
   private:
+    // TODO: cleanup ExecuteScript
     bool ExecuteScript(Local<String> source);
 
     bool InstallMaps(map<string, string>* bucket);
 
     static Local<ObjectTemplate> MakeBucketMapTemplate(Isolate* isolate);
 
+    // TODO: Cleanup MakeN1QLMapTemplate
     static Local<ObjectTemplate> MakeN1QLMapTemplate(Isolate* isolate);
 
     static void BucketGet(Local<Name> name,
@@ -75,6 +79,7 @@ class N1QL {
 
     static Couchbase::Client* n1ql_conn_obj;
   private:
+    // TODO: cleanup ExecuteScript
     bool ExecuteScript(Local<String> source);
 
     bool InstallMaps(map<string, string>* n1ql);
@@ -95,4 +100,34 @@ class N1QL {
     string n1ql_alias;
 
 };
+
+class HTTPResponse {
+  public:
+    HTTPResponse(Worker* w);
+    ~HTTPResponse();
+
+    Local<Object> WrapHTTPResponseMap();
+
+    Isolate* GetIsolate() { return isolate_; }
+
+    Global<ObjectTemplate> http_response_map_template_;
+
+    const char* ConvertMapToJson();
+
+    Worker* worker;
+    static Isolate* http_isolate_;
+
+  private:
+
+    bool InstallHTTPResponseMaps();
+
+    static Local<ObjectTemplate> MakeHTTPResponseMapTemplate(Isolate* isolate);
+
+    static void HTTPResponseSet(Local<Name> name, Local<Value> value,
+                          const PropertyCallbackInfo<Value>& info);
+
+    Persistent<Context> context_;
+    Isolate* isolate_;
+};
+
 #endif

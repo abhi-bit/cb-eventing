@@ -22,6 +22,8 @@ int worker_send_update(worker* w, const char* value,
                        const char* meta, const char* type);
 int worker_send_delete(worker* w, const char* msg);
 
+const char* worker_send_http_get(worker* w, const char* http_req);
+
 void worker_dispose(worker* w);
 void worker_terminate_execution(worker* w);
 

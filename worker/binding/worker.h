@@ -15,6 +15,7 @@ extern "C" {
 #endif
 
 class Bucket;
+class HTTPResponse;
 class N1QL;
 class Worker;
 
@@ -43,6 +44,7 @@ class Worker {
 
     int SendUpdate(const char* value, const char* meta, const char* doc_type);
     int SendDelete(const char* msg);
+    const char* SendHTTPGet(const char* http_req);
 
     void WorkerDispose();
     void WorkerTerminateExecution();
@@ -52,6 +54,11 @@ class Worker {
 
     Persistent<Function> on_delete_;
     Persistent<Function> on_update_;
+    Persistent<Function> on_http_get_;
+    Persistent<Function> on_http_post_;
+    Persistent<Function> on_timer_event_;
+
+    static map<string, string> http_response;
 
   private:
     bool ExecuteScript(Local<String> script);
@@ -66,6 +73,8 @@ class Worker {
 
     Bucket* b;
     N1QL* n;
+    HTTPResponse* r;
+
     map<string, string> bucket;
     map<string, string> n1ql;
 };

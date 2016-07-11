@@ -30,7 +30,7 @@ class Bucket {
 
     Global<ObjectTemplate> bucket_map_template_;
 
-    static Couchbase::Client* bucket_conn_obj;
+    Couchbase::Client* bucket_conn_obj;
 
   private:
     // TODO: cleanup ExecuteScript
@@ -51,7 +51,6 @@ class Bucket {
                              const PropertyCallbackInfo<Boolean>& info);
 
     Local<Object> WrapBucketMap(map<string, string> *bucket);
-    static map<string, string>* UnwrapMap(Local<Object> obj);
 
     Isolate* isolate_;
     Persistent<Context> context_;
@@ -77,20 +76,19 @@ class N1QL {
 
     Global<ObjectTemplate> n1ql_map_template_;
 
-    static Couchbase::Client* n1ql_conn_obj;
+    Couchbase::Client* n1ql_conn_obj;
   private:
     // TODO: cleanup ExecuteScript
     bool ExecuteScript(Local<String> source);
 
     bool InstallMaps(map<string, string>* n1ql);
 
-    static Local<ObjectTemplate> MakeN1QLMapTemplate(Isolate* isolate);
+    Local<ObjectTemplate> MakeN1QLMapTemplate(Isolate* isolate);
 
     static void N1QLEnumGetCall(Local<Name> name,
                              const PropertyCallbackInfo<Value>& info);
 
     Local<Object> WrapN1QLMap(map<string, string> *bucket);
-    //static map<string, string>* UnwrapMap(Local<Object> obj);
 
     Isolate* isolate_;
     Persistent<Context> context_;
@@ -115,7 +113,7 @@ class HTTPResponse {
     const char* ConvertMapToJson();
 
     Worker* worker;
-    static Isolate* http_isolate_;
+    map<string, string> http_response;
 
   private:
 

@@ -102,7 +102,7 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 		logging.Infof("json marshalling of http request failed")
 	}
 	res := handle.SendHTTPGet(string(request))
-	fmt.Fprintf(w, "res: %s\n", res)
+	fmt.Fprintf(w, "%s\n", res)
 }
 
 func main() {

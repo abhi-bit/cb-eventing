@@ -58,8 +58,6 @@ class Worker {
     Persistent<Function> on_http_post_;
     Persistent<Function> on_timer_event_;
 
-    static map<string, string> http_response;
-
   private:
     bool ExecuteScript(Local<String> script);
 

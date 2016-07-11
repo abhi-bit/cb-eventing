@@ -23,11 +23,6 @@
 using namespace std;
 using namespace v8;
 
-map<string, string> Worker::http_response;
-Couchbase::Client* Bucket::bucket_conn_obj;
-Couchbase::Client* N1QL::n1ql_conn_obj;
-Isolate* HTTPResponse::http_isolate_;
-
 static Local<String> createUtf8String(Isolate *isolate, const char *str) {
   return String::NewFromUtf8(isolate, str,
           NewStringType::kNormal).ToLocalChecked();
@@ -55,6 +50,18 @@ string ToString(Isolate* isolate, Handle<Value> object) {
   result = JSON_stringify->Call(context->Global(), 1, args);
   //String::Utf8Value str(result->ToString());
   return ObjectToString(result);
+}
+
+Couchbase::Client* UnwrapCouchbaseClient(Local<Object> obj) {
+  Local<External> field = Local<External>::Cast(obj->GetInternalField(1));
+  void* ptr = field->Value();
+  return static_cast<Couchbase::Client*>(ptr);
+}
+
+map<string, string>* UnwrapMap(Local<Object> obj) {
+  Local<External> field = Local<External>::Cast(obj->GetInternalField(0));
+  void* ptr = field->Value();
+  return static_cast<map<string, string>*>(ptr);
 }
 
 Bucket::Bucket(Worker* w,
@@ -112,8 +119,11 @@ Local<Object> Bucket::WrapBucketMap(map<string, string>* obj) {
       templ->NewInstance(GetIsolate()->GetCurrentContext()).ToLocalChecked();
 
   Local<External> map_ptr = External::New(GetIsolate(), obj);
+  Local<External> bucket_conn_obj_ptr = External::New(GetIsolate(),
+                                                      bucket_conn_obj);
 
   result->SetInternalField(0, map_ptr);
+  result->SetInternalField(1, bucket_conn_obj_ptr);
 
   return handle_scope.Escape(result);
 }
@@ -139,19 +149,15 @@ bool Bucket::InstallMaps(map<string, string>* bucket) {
   return true;
 }
 
-map<string, string>* Bucket::UnwrapMap(Local<Object> obj) {
-  Local<External> field = Local<External>::Cast(obj->GetInternalField(0));
-  void* ptr = field->Value();
-  return static_cast<map<string, string>*>(ptr);
-}
-
 void Bucket::BucketGet(Local<Name> name,
                        const PropertyCallbackInfo<Value>& info) {
   if (name->IsSymbol()) return;
 
   string key = ObjectToString(Local<String>::Cast(name));
 
-  auto res = bucket_conn_obj->get(key.c_str());
+  Couchbase::Client* bucket_conn_obj_ptr = UnwrapCouchbaseClient(info.Holder());
+
+  auto res = bucket_conn_obj_ptr->get(key.c_str());
 
   const string& value = res.value();
   info.GetReturnValue().Set(
@@ -167,7 +173,9 @@ void Bucket::BucketSet(Local<Name> name, Local<Value> value_obj,
   string key = ObjectToString(Local<String>::Cast(name));
   string value = ObjectToString(value_obj);
 
-  bucket_conn_obj->upsert(key.c_str(), value.c_str());
+  Couchbase::Client* bucket_conn_obj_ptr = UnwrapCouchbaseClient(info.Holder());
+
+  bucket_conn_obj_ptr->upsert(key.c_str(), value.c_str());
   info.GetReturnValue().Set(value_obj);
 }
 
@@ -177,7 +185,8 @@ void Bucket::BucketDelete(Local<Name> name,
 
   string key = ObjectToString(Local<String>::Cast(name));
 
-  bucket_conn_obj->remove(key.c_str());
+  Couchbase::Client* bucket_conn_obj_ptr = UnwrapCouchbaseClient(info.Holder());
+  bucket_conn_obj_ptr->remove(key.c_str());
 
   info.GetReturnValue().Set(true);
 }
@@ -187,7 +196,7 @@ Local<ObjectTemplate> Bucket::MakeBucketMapTemplate(
   EscapableHandleScope handle_scope(isolate);
 
   Local<ObjectTemplate> result = ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(1);
+  result->SetInternalFieldCount(2);
   result->SetHandler(NamedPropertyHandlerConfiguration(BucketGet,
                                                        BucketSet,
                                                        NULL,
@@ -241,7 +250,7 @@ Local<ObjectTemplate> N1QL::MakeN1QLMapTemplate(
   EscapableHandleScope handle_scope(isolate);
 
   Local<ObjectTemplate> result = ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(1);
+  result->SetInternalFieldCount(2);
   result->SetHandler(NamedPropertyHandlerConfiguration(N1QLEnumGetCall));
 
   return handle_scope.Escape(result);
@@ -261,12 +270,14 @@ Local<Object> N1QL::WrapN1QLMap(map<string, string>* obj) {
       templ->NewInstance(GetIsolate()->GetCurrentContext()).ToLocalChecked();
 
   Local<External> map_ptr = External::New(GetIsolate(), obj);
+  Local<External> n1ql_conn_obj_ptr = External::New(GetIsolate(),
+                                                    n1ql_conn_obj);
 
   result->SetInternalField(0, map_ptr);
+  result->SetInternalField(1, n1ql_conn_obj_ptr);
 
   return handle_scope.Escape(result);
 }
-
 
 bool N1QL::InstallMaps(map<string, string> *n1ql) {
   HandleScope handle_scope(GetIsolate());
@@ -296,9 +307,11 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
 
   string query = ObjectToString(Local<String>::Cast(name));
 
+  Couchbase::Client* n1ql_conn_obj_ptr = UnwrapCouchbaseClient(info.Holder());
+
   Couchbase::Status status;
   Couchbase::QueryCommand qcmd(query.c_str());
-  Couchbase::Query q(*n1ql_conn_obj, qcmd, status);
+  Couchbase::Query q(*n1ql_conn_obj_ptr, qcmd, status);
 
   if (!status) {
     cerr << "ERROR: Couldn't issue query: " << status << endl;
@@ -318,7 +331,7 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
   rapidjson::Value& resultCount = doc["metrics"]["resultCount"];
   int count = resultCount.GetInt();
 
-  Couchbase::Query q1(*n1ql_conn_obj, qcmd, status);
+  Couchbase::Query q1(*n1ql_conn_obj_ptr, qcmd, status);
   Handle<Array> result = Array::New(info.GetIsolate(), count);
   int index = 0;
   for (auto row : q1) {
@@ -332,7 +345,6 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
 }
 
 HTTPResponse::HTTPResponse(Worker* w) {
-  HTTPResponse::http_isolate_ = w->GetIsolate();
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
   worker = w;
@@ -356,9 +368,10 @@ void HTTPResponse::HTTPResponseSet(Local<Name> name, Local<Value> value_obj,
   if (name->IsSymbol()) return;
 
   string key = ObjectToString(Local<String>::Cast(name));
-  string value = ToString(HTTPResponse::http_isolate_, value_obj);
+  string value = ToString(info.GetIsolate(), value_obj);
 
-  Worker::http_response[key] = value;
+  map<string, string>* response = UnwrapMap(info.Holder());
+  (*response)[key] = value;
 
   info.GetReturnValue().Set(value_obj);
 }
@@ -388,7 +401,7 @@ Local<Object> HTTPResponse::WrapHTTPResponseMap() {
   Local<Object> result =
       templ->NewInstance(GetIsolate()->GetCurrentContext()).ToLocalChecked();
 
-  Local<External> map_ptr = External::New(GetIsolate(), &Worker::http_response);
+  Local<External> map_ptr = External::New(GetIsolate(), &http_response);
 
   result->SetInternalField(0, map_ptr);
 
@@ -422,13 +435,13 @@ const char* HTTPResponse::ConvertMapToJson() {
 
   writer.StartObject();
 
-  for (auto elem : Worker::http_response) {
+  for (auto elem : http_response) {
       writer.Key(elem.first.c_str());
       writer.String(elem.second.c_str());
   }
 
   writer.EndObject();
-  Worker::http_response.clear();
+  http_response.clear();
 
   return s.GetString();
 }

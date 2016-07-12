@@ -1,0 +1,19 @@
+.top {
+    position:absolute;
+    left:0; right:0;
+    height: 92px;
+    background: #F2F2F2;
+    color: red;
+}
+.left {
+    position:absolute;
+    left:0; top:92px; bottom: 0;
+    width: 178px;
+    background: #D5DBD8;
+}
+.main {
+    position: absolute;
+    left:178px; top:92px; right:0; bottom:0;
+    background: white;
+    color: black;
+}

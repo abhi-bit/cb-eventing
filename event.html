@@ -1,0 +1,47 @@
+<!doctype html>
+<html ng-app="event">
+    <head>
+        <link rel="stylesheet" type="text/css" href="event.css">
+    </head>
+    <body ng-controller="evController">
+        <div class="top">
+            <h1><center> Couchbase Integrated Application Development </center></h2>
+        </div>
+        <div class="left">
+            <a href="#" ng-click="setCreation()"><h2> Applications </h2></a>
+            <table>
+                <tbody ng-repeat="application in applications">
+                    <tr><td>
+                        <a href="#" ng-click="setCurrentApp(application)"><h4> {{application.name}} </h4></a>
+                    </td></tr>
+                    <tr ng-show="isCurrentApp(application) && application.expand" ng-repeat="resource in application.resources">
+                        <td><a href="#"> {{resource.name}} </a></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="main">
+            <form ng-show="showCreation" ng-submit="createApplication(newApplication)">
+                <h2><center> Create New Application </center></h2>
+                <label>Name:</label>
+                <input type="text" ng-model="newApplication.name" placeholder="Enter Application name">
+                <br><br>
+                <button align="left" type="submit">Create from Scratch</button>
+                <button align="center">Load from disk</button>
+            </form>
+            <div ng-show="!showCreation && !currentApp.deploy">
+                <br><br><br><br>
+                <button align="left" ng-click="deployApplication()">Deploy Application</button>
+            </div>
+            <div ng-show="!showCreation && currentApp.deploy">
+                <br><br><br><br>
+                <button align="left" ng-click="undeployApplication()">Undeploy Application</button>
+            </div>
+            <br><br>
+            <button align="left" ng-show="!showCreation">Save to disk</button>
+        </div>
+             <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.3/angular.js"></script>
+    <script src="event.js"></script>
+    </body>
+</html>
+

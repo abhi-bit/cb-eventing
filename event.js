@@ -1,12 +1,17 @@
-angular.module('event', []).controller('evController', function ($scope) {
+angular.module('event', ['ui.ace']).controller('evController', function ($scope) {
     $scope.applications = [];
     $scope.currentApp = null;
+    $scope.showCreation = true;
+    $scope.showAppDetails = false;
+    $scope.showJsonEditor = false;
+    $scope.showJSEditor = false;
 
-    resources = [
+resources = [
 {id:0, name:'Deployment Plan'},
 {id:1, name:'Static Resources'},
 {id:2, name:'Handlers'},
 ];
+    $scope.resources = resources;
 
 function resetCreateApp() {
     $scope.currentApp = null;
@@ -21,7 +26,8 @@ function createApplication(application) {
         application.id = $scope.applications.length;
         application.deploy = false;
         application.expand = false;
-        application.resources=resources;
+        application.depcfg = '{"_comment": "Enter deployment configuration"}';
+        application.handlers = "/* Enter handlers code here */";
         /*for (i=0; i < resources.length; i++) {
           application.resources.push(resources[i]);
           }*/
@@ -32,29 +38,33 @@ function createApplication(application) {
 
 $scope.createApplication = createApplication;
 
-$scope.showCreation = true;
+function disableShowOptons() {
+    $scope.showCreation = false;
+    $scope.showAppDetails = false;
+    $scope.showJSEditor = false;
+    $scope.showJsonEditor = false;
+}
 
 function setCreation() {
+    disableShowOptons();
     $scope.showCreation = true;
     $scope.currentApp = null;
 }
 
 $scope.setCreation = setCreation;
 
-function disableCreation() {
-    $scope.showCreation = false;
-}
-
-
 function setCurrentApp(application) {
-    disableCreation();
+    disableShowOptons();
     application.expand = !application.expand;
     $scope.currentApp = application;
+    $scope.showAppDetails = true;
 }
 $scope.setCurrentApp = setCurrentApp;
 
 function deployApplication() {
     $scope.currentApp.deploy = true;
+    console.log('depcfg: ', $scope.currentApp.depcfg);
+    console.log('handlers: ', $scope.currentApp.handlers);
 }
 $scope.deployApplication = deployApplication;
 
@@ -69,5 +79,23 @@ function isCurrentApp(application) {
     return flag;
 }
 $scope.isCurrentApp = isCurrentApp;
+
+function openEditor(resource) {
+    disableShowOptons();
+    /* Do not edit static resources now */
+    switch (resource.id) {
+        case 0:
+            $scope.showJsonEditor = true;
+            break;
+        case 1:
+            disableShowOptons();
+            break;
+        case 2:
+            $scope.showJSEditor = true;
+            break;
+    }
+}
+$scope.openEditor = openEditor;
+
 });
 

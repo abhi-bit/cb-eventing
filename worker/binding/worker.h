@@ -17,6 +17,7 @@ extern "C" {
 class Bucket;
 class HTTPResponse;
 class N1QL;
+class Queue;
 class Worker;
 
 struct worker_s {
@@ -72,26 +73,14 @@ class Worker {
     Bucket* b;
     N1QL* n;
     HTTPResponse* r;
+    Queue* q;
 
     map<string, string> bucket;
     map<string, string> n1ql;
+    map<string, string> queue;
 };
 
 const char* worker_version();
-
-/*void v8_init();
-
-Worker* worker_new(int table_index);
-
-int worker_load(Worker* w, char* name_s, char* source_s);
-
-const char* worker_last_exception(Worker* w);
-
-int worker_send_update(Worker* w, const char* msg);
-int worker_send_delete(Worker* w, const char* msg);
-
-void worker_dispose(Worker* w);
-void worker_terminate_execution(Worker* w);*/
 
 #ifdef __cplusplus
 } // extern "C"

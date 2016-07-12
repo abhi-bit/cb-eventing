@@ -141,6 +141,8 @@ Worker::Worker(int tindex) {
   map<string, map<string, vector<string> > >::iterator it = result.begin();
 
   for (; it != result.end(); it++) {
+      cout << "it->first " << it->first << endl;
+
       if (it->first == "buckets") {
           map<string, vector<string> >::iterator bucket = result["buckets"].begin();
           for (; bucket != result["buckets"].end(); bucket++) {
@@ -169,6 +171,22 @@ Worker::Worker(int tindex) {
                          n1ql_alias.c_str());
           }
       }
+      if (it->first == "queue") {
+          map<string, vector<string> >::iterator queue = result["queue"].begin();
+          for (; queue != result["queue"].end(); queue++) {
+            string queue_name = queue->first;
+            string endpoint = result["queue"][queue_name][1];
+            string queue_alias = result["queue"][queue_name][2];
+
+            cout << "queue_name: " << queue_name << " endpoint: " << endpoint
+                 << " queue_alias: " << queue_alias << endl;
+            q = new Queue(this,
+                          queue_name.c_str(),
+                          endpoint.c_str(),
+                          queue_alias.c_str());
+          }
+
+      }
   }
   r = new HTTPResponse(this);
 }
@@ -180,7 +198,8 @@ Worker::~Worker() {
 }
 
 void LoadBuiltins(string* out) {
-    ifstream ifs("../worker/binding/builtin.js");
+    //ifstream ifs("../worker/binding/builtin.js");
+    ifstream ifs("/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/worker/binding/builtin.js");
     string content((istreambuf_iterator<char> (ifs)),
                    (istreambuf_iterator<char>()));
     out->assign(content);
@@ -197,7 +216,7 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
 
   TryCatch try_catch;
 
-  string script_to_execute;
+  string temp, script_to_execute;
   string content;
   LoadBuiltins(&content);
 
@@ -206,18 +225,34 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   // TODO: Figure out if there is a cleaner way to do preprocessing for n1ql
   // Converting n1ql("<query>") to tagged template literal i.e. n1ql`<query>`
   std::regex n1ql_ttl("(n1ql\\(\")(.*)(\"\\))");
-  std::smatch m;
+  std::smatch n1ql_m;
 
-  while (std::regex_search(content, m, n1ql_ttl)) {
-      script_to_execute += m.prefix();
+  while (std::regex_search(content, n1ql_m, n1ql_ttl)) {
+      temp += n1ql_m.prefix();
       std::regex re_prefix("n1ql\\(\"");
       std::regex re_suffix("\"\\)");
-      script_to_execute += std::regex_replace(m[1].str(), re_prefix, "n1ql`");
-      script_to_execute += m[2].str();
-      script_to_execute += std::regex_replace(m[3].str(), re_suffix, "`");
-      content = m.suffix();
+      temp += std::regex_replace(n1ql_m[1].str(),
+                                              re_prefix, "n1ql`");
+      temp += n1ql_m[2].str();
+      temp += std::regex_replace(n1ql_m[3].str(),
+                                              re_suffix, "`");
+      content = n1ql_m.suffix();
   }
-  script_to_execute += content;
+  temp += content;
+
+  // Preprocessor for allowing queue operations
+  std::regex enqueue("(enqueue\\((.*)\\, (.*)\\)))");
+  std::smatch queue_m;
+
+  while (std::regex_search(temp, queue_m, enqueue)) {
+      script_to_execute += queue_m.prefix();
+      script_to_execute += queue_m[2].str();
+      script_to_execute += "[";
+      script_to_execute += queue_m[3].str();
+      script_to_execute += "]";
+      temp = queue_m.suffix();
+  }
+  script_to_execute += temp;
 
   Local<String> name = String::NewFromUtf8(GetIsolate(), name_s);
   Local<String> source = String::NewFromUtf8(GetIsolate(),
@@ -286,6 +321,10 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   }
   if (!n->Initialize(this, &n1ql, source)) {
     cerr << "Error initializing n1ql handler" << endl;
+    exit(2);
+  }
+  if (!q->Initialize(this, &queue)) {
+    cerr << "Error initializing queue handler" << endl;
     exit(2);
   }
 

@@ -3,7 +3,8 @@
 map<string, map<string, vector<string> > > ParseDeployment() {
   map<string, map<string, vector<string> > > out;
 
-  ifstream ifs("./deployment.json");
+  //ifstream ifs("./deployment.json");
+  ifstream ifs("/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/deployment.json");
   string content((istreambuf_iterator<char>(ifs)),
                   (istreambuf_iterator<char>()));
 
@@ -45,7 +46,7 @@ map<string, map<string, vector<string> > > ParseDeployment() {
 
           rapidjson::Value& queue_name = queues[i]["queue_name"];
           rapidjson::Value& endpoint = queues[i]["endpoint"];
-          rapidjson::Value& alias = buckets[i]["alias"];
+          rapidjson::Value& alias = queues[i]["alias"];
 
           queue_info.push_back(queue_name.GetString());
           queue_info.push_back(endpoint.GetString());
@@ -53,7 +54,7 @@ map<string, map<string, vector<string> > > ParseDeployment() {
 
           queues_info[queue_name.GetString()] = queue_info;
       }
-      out["queues"] = queues_info;
+      out["queue"] = queues_info;
 
 
       map<string, vector<string> > n1qls_info;

@@ -35,9 +35,24 @@ func startBucket(cluster, bucketn string, kvaddrs []string) int {
 		}
 	}()
 
-	logging.Infof("Connecting with %q\n", bucketn)
+	logging.Infof("Trying to connect with %q cluster: %q kvaddrs: %q\n",
+		bucketn, cluster, kvaddrs)
 	b, err := common.ConnectBucket(cluster, "default", bucketn)
-	mf(err, "bucket")
+	logging.Infof("ABHI: Connected with %q\n", bucketn)
+
+	var sleep time.Duration
+	sleep = 1
+	for err != nil {
+		logging.Infof("bucket: %q unavailable, retrying after %d seconds\n",
+			bucketn, sleep)
+		time.Sleep(time.Second * sleep)
+		b, err = common.ConnectBucket(cluster, "default", bucketn)
+		if sleep < 8 {
+			sleep = sleep * 2
+		}
+	}
+	logging.Infof("Connected with %q\n", bucketn)
+	//mf(err, "bucket")
 
 	dcpConfig := map[string]interface{}{
 		"genChanSize":    10000,

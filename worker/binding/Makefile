@@ -6,8 +6,8 @@ CBDEPS_DIR=/Users/asingh/.cbdepscache/
 SOURCE_FILES=parse_deployment.cc worker.cc bucket.cc
 OBJECT_FILES=parse_deployment.o worker.o bucket.o
 
-INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/var/tmp/repos/libcouchbase-cxx/include/
-LDFLAGS=-dynamiclib -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase -ljemalloc
+INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/var/tmp/repos/libcouchbase-cxx/include/ -I/usr/local/include/hiredis
+LDFLAGS=-dynamiclib -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase -ljemalloc -lhiredis
 V8_BINDING_LIB=libv8_binding.dylib
 
 all:

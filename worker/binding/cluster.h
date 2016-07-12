@@ -1,8 +1,15 @@
 #ifndef __CLUSTER_H__
 #define __CLUSTER_H__
 
+#include <libcouchbase/couchbase.h>
+#include <libcouchbase/api3.h>
 #include <string>
 #include <map>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <hiredis.h>
 
 #include "worker.h"
 
@@ -99,6 +106,38 @@ class N1QL {
 
 };
 
+class Queue {
+  public:
+    Queue(Worker* w, const char* qname, const char* ep, const char* alias);
+    ~Queue();
+
+    virtual bool Initialize(Worker* w,
+                            map<string, string>* queue);
+
+    Isolate* GetIsolate() { return isolate_; }
+
+    Global<ObjectTemplate> queue_map_template_;
+
+    redisContext *c;
+
+  private:
+    bool InstallQueueMaps(map<string, string>* queue);
+
+    Local<ObjectTemplate> MakeQueueMapTemplate(Isolate* isolate);
+
+    static void QueueGetCall(Local<Name> name,
+                             const PropertyCallbackInfo<Value>& info);
+
+    Local<Object> WrapQueueMap(map<string, string> *queue);
+
+    Isolate* isolate_;
+    Persistent<Context> context_;
+
+    string queue_name;
+    string endpoint;
+    string queue_alias;
+};
+
 class HTTPResponse {
   public:
     HTTPResponse(Worker* w);
@@ -116,7 +155,6 @@ class HTTPResponse {
     map<string, string> http_response;
 
   private:
-
     bool InstallHTTPResponseMaps();
 
     static Local<ObjectTemplate> MakeHTTPResponseMapTemplate(Isolate* isolate);

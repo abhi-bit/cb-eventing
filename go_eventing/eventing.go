@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -136,7 +137,7 @@ func main() {
 	regexpHandler := &RegexpHandler{}
 	regexpHandler.HandleFunc(regexp.MustCompile("/*"), handleJsRequests)
 
-	http.ListenAndServe("localhost:6061", regexpHandler)
+	log.Fatal(http.ListenAndServe("localhost:6061", regexpHandler))
 }
 
 func runWorker() {
@@ -158,7 +159,10 @@ func runWorker() {
 		// Spawns up a brand new runtime env on top of V8
 		handle = worker.New()
 
-		file, _ := ioutil.ReadFile("handle_event.js")
+		file, err := ioutil.ReadFile("/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/handle_event.js")
+		if err != nil {
+			logging.Infof("Failed to load application JS file\n")
+		}
 		handle.Load("handle_event.js", string(file))
 
 		for msg := range rch {

@@ -1,4 +1,13 @@
-angular.module('event', ['ui.ace']).controller('evController', ['$scope', '$http', function ($scope, $http) {
+var ev = angular.module('event', ['ui.ace']);
+
+ev.run(['$rootScope', '$http', function($rootScope, $http) {
+    $http.get('http://localhost:6061/get_application')
+    .then(function(response) {
+        $rootScope.applications  = response.data;
+    });
+}]);
+
+ev.controller('evController', ['$scope', '$http', function ($scope, $http) {
     $scope.applications = [];
     $scope.currentApp = null;
     $scope.showCreation = true;
@@ -28,9 +37,6 @@ function createApplication(application) {
         application.expand = false;
         application.depcfg = '{"_comment": "Enter deployment configuration"}';
         application.handlers = "/* Enter handlers code here */";
-        /*for (i=0; i < resources.length; i++) {
-          application.resources.push(resources[i]);
-          }*/
         $scope.applications.push(application);
     }
     resetCreateApp()

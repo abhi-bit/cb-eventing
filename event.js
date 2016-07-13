@@ -1,4 +1,4 @@
-angular.module('event', ['ui.ace']).controller('evController', function ($scope) {
+angular.module('event', ['ui.ace']).controller('evController', ['$scope', '$http', function ($scope, $http) {
     $scope.applications = [];
     $scope.currentApp = null;
     $scope.showCreation = true;
@@ -63,8 +63,13 @@ $scope.setCurrentApp = setCurrentApp;
 
 function deployApplication() {
     $scope.currentApp.deploy = true;
-    console.log('depcfg: ', $scope.currentApp.depcfg);
-    console.log('handlers: ', $scope.currentApp.handlers);
+    var res = $http.post('http://localhost:6061/set_application/', $scope.currentApp);
+    res.success(function(data, status, headers, config) {
+        $scope.set_application = data;
+    });
+    res.error(function(data, status, headers, config) {
+        alert( "failure message: " + JSON.stringify({data: data}));
+    });
 }
 $scope.deployApplication = deployApplication;
 
@@ -97,5 +102,5 @@ function openEditor(resource) {
 }
 $scope.openEditor = openEditor;
 
-});
+}]);
 

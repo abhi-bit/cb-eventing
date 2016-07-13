@@ -59,10 +59,22 @@ func startBucket(cluster, bucketn string, kvaddrs []string) int {
 		"dataChanSize":   10000,
 		"numConnections": 4,
 	}
+
 	dcpFeed, err := b.StartDcpFeedOver(
 		couchbase.NewDcpFeedName("rawupr"),
 		uint32(0), options.kvaddrs, 0xABCD, dcpConfig)
-	mf(err, "- upr")
+	sleep = 1
+	for err != nil {
+		logging.Infof("Unable to open DCP Feed, retrying after %d seconds\n", sleep)
+		time.Sleep(time.Second * sleep)
+
+		dcpFeed, err = b.StartDcpFeedOver(couchbase.NewDcpFeedName("rawupr"),
+			uint32(0), options.kvaddrs, 0xABCD, dcpConfig)
+
+		if sleep < 8 {
+			sleep = sleep * 2
+		}
+	}
 
 	vbnos := listOfVbnos(options.maxVbno)
 

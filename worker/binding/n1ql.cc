@@ -155,24 +155,13 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
   rc = lcb_n1ql_query(*n1ql_lcb_obj_ptr, &rows, &qcmd);
   lcb_wait(*n1ql_lcb_obj_ptr);
 
-  rapidjson::Document doc;
-  if (doc.Parse(rows.metadata.c_str()).HasParseError()) {
-    cerr << "ERROR: Unable to parse meta, exiting!" << std::endl;
-    exit(1);
-  }
+  auto begin = rows.rows.begin();
+  auto end = rows.rows.end();
 
-  assert(doc.IsObject());
-  rapidjson::Value& resultCount = doc["metrics"]["resultCount"];
-  int count = resultCount.GetInt();
-
-  Handle<Array> result = Array::New(info.GetIsolate(), count);
-
-  rows.rows.clear();
-  rc = lcb_n1ql_query(*n1ql_lcb_obj_ptr, &rows, &qcmd);
-  lcb_wait(*n1ql_lcb_obj_ptr);
+  Handle<Array> result = Array::New(info.GetIsolate(), distance(begin, end));
 
   if (rows.rc == LCB_SUCCESS) {
-      cout << "Query successful!, rows retrieved: " << count << endl;
+      cout << "Query successful!, rows retrieved: " << distance(begin, end) << endl;
       int index = 0;
       for (auto& row : rows.rows) {
           result->Set(Integer::New(info.GetIsolate(), index),

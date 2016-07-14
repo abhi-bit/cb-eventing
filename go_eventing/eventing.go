@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -28,6 +29,16 @@ const (
 	JSONType = 0x2000000
 )
 
+const (
+	DeploymentConfigLocation = "/var/tmp/deployment.json"
+	AppHandlerLocation       = "/var/tmp/handle_event.js"
+	AppMetaDataLocation      = "/var/tmp/metadata.json"
+	IDDataLocation           = "/var/tmp/id"
+	DeploymentStatusLocation = "/var/tmp/deploystatus"
+	ExpandLocation           = "/var/tmp/expand"
+	AppNameLocation          = "/var/tmp/appname"
+)
+
 var handle *worker.Worker
 
 type eventMeta struct {
@@ -40,6 +51,15 @@ type eventMeta struct {
 type httpRequest struct {
 	Path string `json:"path"`
 	Host string `json:"host"`
+}
+
+type application struct {
+	Name             string `json:"name"`
+	ID               uint64 `json:"id"`
+	DeploymentStatus bool   `json:"deploy"`
+	Expand           bool   `json:"expand"`
+	DeploymentConfig string `json:"depcfg"`
+	AppHandlers      string `json:"handlers"`
 }
 
 func argParse() string {
@@ -103,15 +123,62 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 		logging.Infof("json marshalling of http request failed")
 	}
 	res := handle.SendHTTPGet(string(request))
+	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, "%s\n", res)
+}
+
+func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
+
+	name, _ := ioutil.ReadFile(AppNameLocation)
+	id, _ := ioutil.ReadFile(IDDataLocation)
+	ds, _ := ioutil.ReadFile(DeploymentStatusLocation)
+	exp, _ := ioutil.ReadFile(ExpandLocation)
+	depCfg, _ := ioutil.ReadFile(DeploymentConfigLocation)
+	appHan, _ := ioutil.ReadFile(AppHandlerLocation)
+
+	appID, _ := binary.Uvarint(id)
+	deployStatus, _ := strconv.ParseBool(string(ds))
+	expand, _ := strconv.ParseBool(string(exp))
+
+	appConfig := application{
+		Name:             string(name),
+		ID:               appID - 48,
+		DeploymentStatus: deployStatus,
+		Expand:           expand,
+		DeploymentConfig: string(depCfg),
+		AppHandlers:      string(appHan),
+	}
+
+	data, _ := json.Marshal(appConfig)
+	fmt.Fprintf(w, "%s\n", data)
+}
+
+func storeAppSetup(w http.ResponseWriter, r *http.Request) {
+	content, _ := ioutil.ReadAll(r.Body)
+	log.Println("Content", string(content))
+	var app application
+	err := json.Unmarshal(content, &app)
+	if err != nil {
+		log.Println("Failed to decode application config", err)
+	}
+
+	fmt.Printf("Data recieved from angular js: %#v\n", app)
+	id := fmt.Sprintf("%d", app.ID)
+
+	ioutil.WriteFile(IDDataLocation, []byte(id), 0644)
+	ioutil.WriteFile(DeploymentStatusLocation,
+		[]byte(strconv.FormatBool(app.DeploymentStatus)), 0644)
+	ioutil.WriteFile(ExpandLocation,
+		[]byte(strconv.FormatBool(app.Expand)), 0644)
+
+	ioutil.WriteFile(DeploymentConfigLocation, []byte(app.DeploymentConfig), 0644)
+	ioutil.WriteFile(AppHandlerLocation, []byte(app.AppHandlers), 0644)
+	ioutil.WriteFile(AppNameLocation, []byte(app.Name), 0644)
+	fmt.Fprintf(w, "Stored application config to disk\n")
 }
 
 func main() {
 	cluster := argParse()
-
-	go func() {
-		http.ListenAndServe("localhost:6060", nil)
-	}()
 
 	// setup cbauth
 	if options.auth != "" {
@@ -133,11 +200,20 @@ func main() {
 		runWorker()
 	}()
 
+	go func() {
+		fs := http.FileServer(http.Dir("/var/tmp/ciad"))
+		http.Handle("/", fs)
+		http.HandleFunc("/get_application/", fetchAppSetup)
+		http.HandleFunc("/set_application/", storeAppSetup)
+
+		log.Fatal(http.ListenAndServe("localhost:6061", nil))
+	}()
+
 	// http callbacks for application
 	regexpHandler := &RegexpHandler{}
 	regexpHandler.HandleFunc(regexp.MustCompile("/*"), handleJsRequests)
 
-	log.Fatal(http.ListenAndServe("localhost:6061", regexpHandler))
+	log.Fatal(http.ListenAndServe("localhost:6062", regexpHandler))
 }
 
 func runWorker() {
@@ -170,6 +246,7 @@ func runWorker() {
 
 			m := msg[1].(*mc.DcpEvent)
 			if m.Opcode == mcd.DCP_MUTATION {
+				logging.Infof("DCP_MUTATION opcode flag %d\n", m.Flags)
 				if m.Flags == JSONType {
 
 					meta := eventMeta{Key: string(m.Key),
@@ -188,6 +265,9 @@ func runWorker() {
 				} else {
 
 					meta := eventMeta{Key: string(m.Key),
+						// TODO: Figure how to set JSON document with proper flag,
+						// Right now treating everything as json type
+						// This would blow up when you've base64 doc
 						Type:   "base64",
 						Cas:    strconv.FormatUint(m.Cas, 16),
 						Expiry: fmt.Sprint(m.Expiry),

@@ -3,10 +3,10 @@ CXXFLAGS=-O3 -c -fPIC -std=c++11
 
 CBDEPS_DIR=/Users/asingh/.cbdepscache/
 
-SOURCE_FILES=parse_deployment.cc worker.cc bucket.cc
-OBJECT_FILES=parse_deployment.o worker.o bucket.o
+SOURCE_FILES=bucket.cc http_response.cc n1ql.cc parse_deployment.cc queue.cc worker.cc
+OBJECT_FILES=bucket.o http_response.o n1ql.o parse_deployment.o queue.o worker.o
 
-INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/var/tmp/repos/libcouchbase-cxx/include/ -I/usr/local/include/hiredis
+INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/usr/local/include/hiredis
 LDFLAGS=-dynamiclib -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase -ljemalloc -lhiredis
 V8_BINDING_LIB=libv8_binding.dylib
 

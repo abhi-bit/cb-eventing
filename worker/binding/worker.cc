@@ -2,12 +2,55 @@
 #include <cstring>
 #include <regex>
 
+#include "bucket.h"
+#include "http_response.h"
+#include "n1ql.h"
 #include "parse_deployment.h"
-#include "cluster.h"
+#include "queue.h"
 
 using namespace v8;
 
-extern "C" {
+//extern "C" {
+
+Local<String> createUtf8String(Isolate *isolate, const char *str) {
+  return String::NewFromUtf8(isolate, str,
+          NewStringType::kNormal).ToLocalChecked();
+}
+
+string ObjectToString(Local<Value> value) {
+  String::Utf8Value utf8_value(value);
+  return string(*utf8_value);
+}
+
+string ToString(Isolate* isolate, Handle<Value> object) {
+  HandleScope handle_scope(isolate);
+
+  Local<Context> context = isolate->GetCurrentContext();
+  Local<Object> global = context->Global();
+
+  Local<Object> JSON = global->Get(String::NewFromUtf8(isolate, "JSON"))->ToObject();
+  Local<Function> JSON_stringify = Local<Function>::Cast(
+                                          JSON->Get(
+                                              String::NewFromUtf8(isolate, "stringify")));
+
+  Local<Value> result;
+  Local<Value> args[1];
+  args[0] = { object };
+  result = JSON_stringify->Call(context->Global(), 1, args);
+  return ObjectToString(result);
+}
+
+lcb_t* UnwrapLcbInstance(Local<Object> obj) {
+  Local<External> field = Local<External>::Cast(obj->GetInternalField(1));
+  void* ptr = field->Value();
+  return static_cast<lcb_t*>(ptr);
+}
+
+map<string, string>* UnwrapMap(Local<Object> obj) {
+  Local<External> field = Local<External>::Cast(obj->GetInternalField(0));
+  void* ptr = field->Value();
+  return static_cast<map<string, string>*>(ptr);
+}
 
 // Extracts a C string from a V8 Utf8Value.
 const char* ToCString(const String::Utf8Value& value) {
@@ -143,6 +186,7 @@ Worker::Worker(int tindex) {
   for (; it != result.end(); it++) {
       cout << "it->first " << it->first << endl;
 
+      cout << __FILE__ << " " << __FUNCTION__ << " " << __LINE__ << endl;
       if (it->first == "buckets") {
           map<string, vector<string> >::iterator bucket = result["buckets"].begin();
           for (; bucket != result["buckets"].end(); bucket++) {
@@ -315,11 +359,11 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   on_timer_event_.Reset(GetIsolate(), on_timer_event_fun);
 
   //TODO: return proper exit codes
-  if (!b->Initialize(this, &bucket, source)) {
+  if (!b->Initialize(this, &bucket)) {
     cerr << "Error initializing bucket handler" << endl;
     exit(2);
   }
-  if (!n->Initialize(this, &n1ql, source)) {
+  if (!n->Initialize(this, &n1ql)) {
     cerr << "Error initializing n1ql handler" << endl;
     exit(2);
   }
@@ -524,4 +568,4 @@ void Worker::WorkerTerminateExecution() {
   V8::TerminateExecution(GetIsolate());
 }
 
-}
+//}

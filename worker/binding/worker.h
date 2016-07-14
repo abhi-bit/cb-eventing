@@ -5,14 +5,17 @@
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
 
+#include <libcouchbase/api3.h>
+#include <libcouchbase/couchbase.h>
+
 #include "binding.h"
 
 using namespace v8;
 using namespace std;
 
-#ifdef __cplusplus
+/*#ifdef __cplusplus
 extern "C" {
-#endif
+#endif*/
 
 class Bucket;
 class HTTPResponse;
@@ -23,6 +26,16 @@ class Worker;
 struct worker_s {
     Worker* w;
 };
+
+Local<String> createUtf8String(Isolate *isolate, const char *str);
+
+string ObjectToString(Local<Value> value);
+
+string ToString(Isolate* isolate, Handle<Value> object);
+
+lcb_t* UnwrapLcbInstance(Local<Object> obj);
+
+map<string, string>* UnwrapMap(Local<Object> obj);
 
 class ArrayBufferAllocator : public ArrayBuffer::Allocator {
  public:
@@ -82,8 +95,8 @@ class Worker {
 
 const char* worker_version();
 
-#ifdef __cplusplus
+/*#ifdef __cplusplus
 } // extern "C"
-#endif
+#endif*/
 
 #endif

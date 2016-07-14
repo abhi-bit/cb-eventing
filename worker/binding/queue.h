@@ -1,46 +1,49 @@
+#ifndef __QUEUE_H__
+#define __QUEUE_H__
+
+#include <string>
+#include <map>
+
+#include <hiredis.h>
+
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
+
+#include "worker.h"
 
 using namespace std;
 using namespace v8;
 
-class Bucket {
+class Queue {
   public:
-    Bucket(worker* w, char* bname, char* ep);
-    //virtual ~Bucket();
+    Queue(Worker* w, const char* qname, const char* ep, const char* alias);
+    ~Queue();
 
-    virtual bool Initialize(map<string, string>* bucket,
-                           Local<String> script);
-    int send_doc_update_bucket(const char *msg);
-    int send_doc_delete_bucket(const char *msg);
-
-    string bucket_name;
-    string endpoint;
-
-  private:
-    Global<ObjectTemplate> map_template_;
-    bool ExecuteScript(Local<String> source);
-
-    bool InstallMaps(map<string, string>* bucket);
-
-    static Local<ObjectTemplate> MakeMapTemplate(Isolate* isolate);
-
-    static void BucketGet(Local<Name> name,
-                          const PropertyCallbackInfo<Value>& info);
-    static void BucketSet(Local<Name> name, Local<Value> value,
-                          const PropertyCallbackInfo<Value>& info);
-    static void BucketDelete(Local<Name> name,
-                             const PropertyCallbackInfo<Boolean>& info);
-
-    Local<Object> WrapMap(map<string, string> *bucket);
-    static map<string, string>* UnwrapMap(Local<Object> obj);
+    virtual bool Initialize(Worker* w,
+                            map<string, string>* queue);
 
     Isolate* GetIsolate() { return isolate_; }
-    string GetBucketName() { return bucket_name; }
-    string GetEndPoint() { return endpoint; }
+
+    Global<ObjectTemplate> queue_map_template_;
+
+    redisContext *c;
+
+  private:
+    bool InstallQueueMaps(map<string, string>* queue);
+
+    Local<ObjectTemplate> MakeQueueMapTemplate(Isolate* isolate);
+
+    static void QueueGetCall(Local<Name> name,
+                             const PropertyCallbackInfo<Value>& info);
+
+    Local<Object> WrapQueueMap(map<string, string> *queue);
 
     Isolate* isolate_;
     Persistent<Context> context_;
-    Persistent<Function> on_update_;
-    Persistent<Function> on_delete_;
+
+    string queue_name;
+    string endpoint;
+    string queue_alias;
 };
+
+#endif

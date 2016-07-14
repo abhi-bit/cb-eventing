@@ -1,35 +1,38 @@
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
 #include <iostream>
-
-#include "cluster.h"
-
-#include <libcouchbase/couchbase++.h>
-#include <libcouchbase/couchbase++/views.h>
-#include <libcouchbase/couchbase++/query.h>
+#include <map>
+#include <string>
+#include <vector>
 
 #include <rapidjson/document.h>
+#include <rapidjson/writer.h>
+#include <rapidjson/stringbuffer.h>
 
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
 
+#include <libcouchbase/api3.h>
+#include <libcouchbase/couchbase.h>
+#include <libcouchbase/n1ql.h>
+
+#include "n1ql.h"
 
 using namespace std;
 using namespace v8;
 
-Couchbase::Client* N1QL::n1ql_conn_obj;
+static void query_callback(lcb_t, int, const lcb_RESPN1QL *resp) {
+    Rows *rows = reinterpret_cast<Rows*>(resp->cookie);
 
-string ObjectToString(Local<Value> value);
-
-static Local<String> createUtf8String(Isolate *isolate, const char *str) {
-  return String::NewFromUtf8(isolate, str,
-          NewStringType::kNormal).ToLocalChecked();
+    if (resp->rflags & LCB_RESP_F_FINAL) {
+        rows->rc = resp->rc;
+        rows->metadata.assign(resp->row, resp->nrow);
+    } else {
+        rows->rows.push_back(string(resp->row, resp->nrow));
+    }
 }
-
-/*
-string ObjectToString(Local<Value> value) {
-  String::Utf8Value utf8_value(value);
-  return string(*utf8_value);
-}
-*/
 
 N1QL::N1QL(Worker* w,
           const char* bname, const char* ep,
@@ -42,20 +45,26 @@ N1QL::N1QL(Worker* w,
   n1ql_alias.assign(alias);
 
   string connstr = "couchbase://" + GetEndPoint() + "/" + GetBucketName();
-  n1ql_conn_obj = new Couchbase::Client(connstr);
-  Couchbase::Status rv = n1ql_conn_obj->connect();
-  if (!rv.success()) {
-      cout << "Couldn't connect to '" << connstr << "'. Reason" << rv << endl;
-      exit(1);
-  }
+
+  // LCB setup
+  lcb_create_st crst;
+  memset(&crst, 0, sizeof crst);
+
+  crst.version = 3;
+  crst.v.v3.connstr = connstr.c_str();
+
+  lcb_create(&n1ql_lcb_obj, &crst);
+  lcb_connect(n1ql_lcb_obj);
+  lcb_wait(n1ql_lcb_obj);
 }
 
 N1QL::~N1QL() {
+    lcb_destroy(n1ql_lcb_obj);
     context_.Reset();
 }
 
 bool N1QL::Initialize(Worker* w,
-                      map<string, string>* n1ql, Local<String> source) {
+                      map<string, string>* n1ql) {
 
   HandleScope handle_scope(GetIsolate());
 
@@ -75,7 +84,7 @@ Local<ObjectTemplate> N1QL::MakeN1QLMapTemplate(
   EscapableHandleScope handle_scope(isolate);
 
   Local<ObjectTemplate> result = ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(1);
+  result->SetInternalFieldCount(2);
   result->SetHandler(NamedPropertyHandlerConfiguration(N1QLEnumGetCall));
 
   return handle_scope.Escape(result);
@@ -95,12 +104,14 @@ Local<Object> N1QL::WrapN1QLMap(map<string, string>* obj) {
       templ->NewInstance(GetIsolate()->GetCurrentContext()).ToLocalChecked();
 
   Local<External> map_ptr = External::New(GetIsolate(), obj);
+  Local<External> n1ql_lcb_obj_ptr = External::New(GetIsolate(),
+                                                    &n1ql_lcb_obj);
 
   result->SetInternalField(0, map_ptr);
+  result->SetInternalField(1, n1ql_lcb_obj_ptr);
 
   return handle_scope.Escape(result);
 }
-
 
 bool N1QL::InstallMaps(map<string, string> *n1ql) {
   HandleScope handle_scope(GetIsolate());
@@ -109,7 +120,7 @@ bool N1QL::InstallMaps(map<string, string> *n1ql) {
 
   Local<Context> context = Local<Context>::New(GetIsolate(), context_);
 
-  cout << "Registering handler for bucket_alias: " << n1ql_alias.c_str() << endl;
+  cout << "Registering handler for n1ql_alias: " << n1ql_alias.c_str() << endl;
   // Set the options object as a property on the global object.
 
   context->Global()
@@ -130,21 +141,23 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
 
   string query = ObjectToString(Local<String>::Cast(name));
 
-  Couchbase::Status status;
-  Couchbase::QueryCommand qcmd(query.c_str());
-  Couchbase::Query q(*n1ql_conn_obj, qcmd, status);
+  lcb_t* n1ql_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
 
-  if (!status) {
-    cout << "ERROR: Couldn't issue query: " << status << endl;
-  }
+  lcb_error_t rc;
+  lcb_N1QLPARAMS *params;
+  lcb_CMDN1QL qcmd= { 0 };
+  Rows rows;
 
-  for (auto row : q) {
-      //cout << "Row: " << row.json() << endl;
-  }
+  params = lcb_n1p_new();
+  rc = lcb_n1p_setstmtz(params, query.c_str());
+  qcmd.callback = query_callback;
+  rc = lcb_n1p_mkcmd(params, &qcmd);
+  rc = lcb_n1ql_query(*n1ql_lcb_obj_ptr, &rows, &qcmd);
+  lcb_wait(*n1ql_lcb_obj_ptr);
 
   rapidjson::Document doc;
-  if (doc.Parse(q.meta().body().data()).HasParseError()) {
-    std::cout << "ERROR: Unable to parse meta, exiting!" << std::endl;
+  if (doc.Parse(rows.metadata.c_str()).HasParseError()) {
+    cerr << "ERROR: Unable to parse meta, exiting!" << std::endl;
     exit(1);
   }
 
@@ -152,14 +165,25 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
   rapidjson::Value& resultCount = doc["metrics"]["resultCount"];
   int count = resultCount.GetInt();
 
-  Couchbase::Query q1(*n1ql_conn_obj, qcmd, status);
   Handle<Array> result = Array::New(info.GetIsolate(), count);
-  int index = 0;
-  for (auto row : q1) {
-      result->Set(Integer::New(info.GetIsolate(), index),
-                  createUtf8String(info.GetIsolate(),
-                         row.json().to_string().c_str()));
-      index++;
+
+  rows.rows.clear();
+  rc = lcb_n1ql_query(*n1ql_lcb_obj_ptr, &rows, &qcmd);
+  lcb_wait(*n1ql_lcb_obj_ptr);
+
+  if (rows.rc == LCB_SUCCESS) {
+      cout << "Query successful!, rows retrieved: " << count << endl;
+      int index = 0;
+      for (auto& row : rows.rows) {
+          result->Set(Integer::New(info.GetIsolate(), index),
+                      v8::JSON::Parse(createUtf8String(info.GetIsolate(),
+                                      row.c_str())));
+          index++;
+      }
+  } else {
+      cerr << "Query failed!";
+      cerr << "(" << int(rows.rc) << "). ";
+      cerr << lcb_strerror(NULL, rows.rc) << endl;
   }
 
   info.GetReturnValue().Set(result);

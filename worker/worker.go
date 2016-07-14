@@ -151,5 +151,6 @@ func (w *Worker) SendHTTPGet(r string) string {
 	defer C.free(unsafe.Pointer(req))
 
 	res := C.worker_send_http_get(w.worker.cWorker, req)
+	// TODO: allow json dump to be sent
 	return C.GoString(res)
 }

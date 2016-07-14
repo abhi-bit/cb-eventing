@@ -1,14 +1,14 @@
 var ev = angular.module('event', ['ui.ace']);
 
 ev.run(['$rootScope', '$http', function($rootScope, $http) {
+    $rootScope.applications = [];
     $http.get('http://localhost:6061/get_application')
     .then(function(response) {
-        $rootScope.applications  = response.data;
+        $rootScope.applications.push(response.data);
     });
 }]);
 
 ev.controller('evController', ['$scope', '$http', function ($scope, $http) {
-    $scope.applications = [];
     $scope.currentApp = null;
     $scope.showCreation = true;
     $scope.showAppDetails = false;

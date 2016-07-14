@@ -11,6 +11,7 @@
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>
+#include <rapidjson/prettywriter.h>
 
 #include <include/v8.h>
 #include <include/libplatform/libplatform.h>
@@ -113,7 +114,7 @@ const char* HTTPResponse::ConvertMapToJson() {
 
   for (auto elem : http_response) {
       writer.Key(elem.first.c_str());
-      writer.String(elem.second.c_str());
+      writer.RawValue(elem.second.c_str(), elem.second.length(), rapidjson::kObjectType);
   }
 
   writer.EndObject();

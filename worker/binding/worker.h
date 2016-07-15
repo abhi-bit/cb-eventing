@@ -59,6 +59,7 @@ class Worker {
     int SendUpdate(const char* value, const char* meta, const char* doc_type);
     int SendDelete(const char* msg);
     const char* SendHTTPGet(const char* http_req);
+    const char* SendHTTPPost(const char* http_req);
 
     void WorkerDispose();
     void WorkerTerminateExecution();

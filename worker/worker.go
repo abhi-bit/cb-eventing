@@ -145,12 +145,20 @@ func (w *Worker) TerminateExecution() {
 	C.worker_terminate_execution(w.worker.cWorker)
 }
 
-// SendHTTPGet sends http request to JS world
+// SendHTTPGet sends http GET request to JS world
 func (w *Worker) SendHTTPGet(r string) string {
 	req := C.CString(string(r))
 	defer C.free(unsafe.Pointer(req))
 
 	res := C.worker_send_http_get(w.worker.cWorker, req)
-	// TODO: allow json dump to be sent
+	return C.GoString(res)
+}
+
+// SendHTTPPost sends http POST request to JS world
+func (w *Worker) SendHTTPPost(r string) string {
+	req := C.CString(string(r))
+	defer C.free(unsafe.Pointer(req))
+
+	res := C.worker_send_http_post(w.worker.cWorker, req)
 	return C.GoString(res)
 }

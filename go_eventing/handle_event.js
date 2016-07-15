@@ -54,6 +54,25 @@ function OnHTTPGet(req, res) {
 }
 
 function OnHTTPPost(req, res) {
+  var bucket = "beer-sample";
+
+  if (req.path === "/get_breweries_by_city") {
+
+    var city = req.params.city;
+    var n1qlResult = n1ql("select count(*) from ${bucket} where ${bucket}.city == '${city}'");
+    res.brewery_count = n1qlResult;
+    res.city = city
+
+  } else if (req.path === "/get_breweries_by_state") {
+
+      var state = req.params.state;
+      var n1qlResult = n1ql("select count(*) from ${bucket} where ${bucket}.state == '${state}'");
+      res.brewery_count = n1qlResult;
+      res.state = state;
+
+  } else {
+      res.http_status_code = 404;
+  }
 
 }
 

@@ -51,8 +51,9 @@ type eventMeta struct {
 }
 
 type httpRequest struct {
-	Path string `json:"path"`
-	Host string `json:"host"`
+	Path   string            `json:"path"`
+	Host   string            `json:"host"`
+	Params map[string]string `json:"params"`
 }
 
 type application struct {
@@ -116,17 +117,41 @@ func usage() {
 }
 
 func handleJsRequests(w http.ResponseWriter, r *http.Request) {
-	req := httpRequest{
-		Path: r.URL.Path,
-		Host: r.URL.Host,
+	if r.Method == "GET" {
+
+		req := httpRequest{
+			Path: r.URL.Path,
+			Host: r.URL.Host,
+		}
+		request, err := json.Marshal(req)
+		if err != nil {
+			logging.Infof("json marshalling of http request failed")
+		}
+		res := handle.SendHTTPGet(string(request))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, "%s\n", res)
+
+	} else if r.Method == "POST" {
+
+		urlValues := make(map[string]string)
+		params := r.URL.Query()
+		for k, v := range params {
+			urlValues[k] = v[0]
+		}
+
+		req := httpRequest{
+			Path:   r.URL.Path,
+			Host:   r.URL.Host,
+			Params: urlValues,
+		}
+		request, err := json.Marshal(req)
+		if err != nil {
+			logging.Infof("json marshalling of http request failed")
+		}
+		res := handle.SendHTTPPost(string(request))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, "%s\n", res)
 	}
-	request, err := json.Marshal(req)
-	if err != nil {
-		logging.Infof("json marshalling of http request failed")
-	}
-	res := handle.SendHTTPGet(string(request))
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, "%s\n", res)
 }
 
 func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
@@ -242,7 +267,6 @@ func runWorker() {
 		handle = worker.New()
 
 		file, err := ioutil.ReadFile(EventHandlerLocation)
-		logging.Infof("handler file dump: %s\n", string(file))
 		if err != nil {
 			logging.Infof("Failed to load application JS file\n")
 		}

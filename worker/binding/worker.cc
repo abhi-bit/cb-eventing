@@ -446,6 +446,32 @@ const char* Worker::SendHTTPGet(const char* http_req) {
   return this->r->ConvertMapToJson();
 }
 
+const char* Worker::SendHTTPPost(const char* http_req) {
+  Locker locker(GetIsolate());
+  Isolate::Scope isolate_scope(GetIsolate());
+  HandleScope handle_scope(GetIsolate());
+
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+  Context::Scope context_scope(context);
+
+  TryCatch try_catch(GetIsolate());
+
+  Handle<Value> args[2];
+  args[0] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), http_req));
+  args[1] = this->r->WrapHTTPResponseMap();
+
+  if(try_catch.HasCaught()) {
+    string last_exception = ExceptionString(GetIsolate(), &try_catch);
+    printf("Logged: %s\n", last_exception.c_str());
+  }
+
+  Local<Function> on_http_post = Local<Function>::New(GetIsolate(), on_http_post_);
+
+  on_http_post->Call(context->Global(), 2, args);
+
+  return this->r->ConvertMapToJson();
+}
+
 int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
   Locker locker(GetIsolate());
   Isolate::Scope isolate_scope(GetIsolate());
@@ -525,6 +551,10 @@ int worker_send_delete(worker* w, const char* msg) {
 
 const char* worker_send_http_get(worker* w, const char* uri_path) {
   return w->w->SendHTTPGet(uri_path);
+}
+
+const char* worker_send_http_post(worker* w, const char* uri_path) {
+  return w->w->SendHTTPPost(uri_path);
 }
 
 static ArrayBufferAllocator array_buffer_allocator;

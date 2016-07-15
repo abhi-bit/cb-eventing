@@ -441,7 +441,7 @@ const char* Worker::SendHTTPGet(const char* http_req) {
 
   Local<Function> on_http_get = Local<Function>::New(GetIsolate(), on_http_get_);
 
-  on_http_get->Call(context, context->Global(), 2, args);
+  on_http_get->Call(context->Global(), 2, args);
 
   return this->r->ConvertMapToJson();
 }
@@ -500,7 +500,7 @@ int Worker::SendDelete(const char *msg) {
   assert(!try_catch.HasCaught());
 
   Local<Function> on_doc_delete = Local<Function>::New(GetIsolate(), on_delete_);
-  on_doc_delete->Call(context, context->Global(), 1, args);
+  on_doc_delete->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
     //last_exception = ExceptionString(GetIsolate(), &try_catch);

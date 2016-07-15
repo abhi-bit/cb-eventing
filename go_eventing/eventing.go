@@ -37,9 +37,11 @@ const (
 	DeploymentStatusLocation = "/var/tmp/deploystatus"
 	ExpandLocation           = "/var/tmp/expand"
 	AppNameLocation          = "/var/tmp/appname"
+	EventHandlerLocation     = "/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/handle_event.js"
 )
 
 var handle *worker.Worker
+var quit chan int
 
 type eventMeta struct {
 	Key    string `json:"key"`
@@ -174,11 +176,15 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	ioutil.WriteFile(DeploymentConfigLocation, []byte(app.DeploymentConfig), 0644)
 	ioutil.WriteFile(AppHandlerLocation, []byte(app.AppHandlers), 0644)
 	ioutil.WriteFile(AppNameLocation, []byte(app.Name), 0644)
+
+	// Sending control message to reload update application handlers
+	quit <- 0
 	fmt.Fprintf(w, "Stored application config to disk\n")
 }
 
 func main() {
 	cluster := argParse()
+	quit = make(chan int)
 
 	// setup cbauth
 	if options.auth != "" {
@@ -235,13 +241,28 @@ func runWorker() {
 		// Spawns up a brand new runtime env on top of V8
 		handle = worker.New()
 
-		file, err := ioutil.ReadFile("/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/handle_event.js")
+		file, err := ioutil.ReadFile(EventHandlerLocation)
+		logging.Infof("handler file dump: %s\n", string(file))
 		if err != nil {
 			logging.Infof("Failed to load application JS file\n")
 		}
 		handle.Load("handle_event.js", string(file))
 
 		for msg := range rch {
+			select {
+			case <-quit:
+				handle.TerminateExecution()
+				logging.Infof("Reloading application handler to pick up updates\n")
+				handle = worker.New()
+
+				file, err := ioutil.ReadFile(EventHandlerLocation)
+				if err != nil {
+					logging.Infof("Failed to load application JS file\n")
+				}
+				handle.Load("handle_event.js", string(file))
+			default:
+
+			}
 			atomic.AddUint64(&ops, 1)
 
 			m := msg[1].(*mc.DcpEvent)
@@ -295,7 +316,6 @@ func runWorker() {
 				}
 			}
 		}
-		handle.TerminateExecution()
 	}()
 
 	wg.Wait()

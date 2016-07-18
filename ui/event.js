@@ -4,7 +4,9 @@ ev.run(['$rootScope', '$http', function($rootScope, $http) {
     $rootScope.applications = [];
     $http.get('http://localhost:6061/get_application')
     .then(function(response) {
-        $rootScope.applications.push(response.data);
+        for(var i = 0; i < response.data.length; i++) {
+            $rootScope.applications.push(response.data[i]);
+        }
     });
 }]);
 
@@ -69,7 +71,9 @@ $scope.setCurrentApp = setCurrentApp;
 
 function deployApplication() {
     $scope.currentApp.deploy = true;
-    var res = $http.post('http://localhost:6061/set_application/', $scope.currentApp);
+    var uri = 'http://localhost:6061/set_application/?name=' + $scope.currentApp.name;
+    console.log('Setting URI: ', uri);
+    var res = $http.post(uri, $scope.currentApp);
     res.success(function(data, status, headers, config) {
         $scope.set_application = data;
     });

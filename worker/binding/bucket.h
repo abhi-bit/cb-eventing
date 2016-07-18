@@ -16,25 +16,13 @@ using namespace v8;
 
 namespace Couchbase { class Client; }
 
-struct Result {
-    string value;
-    lcb_error_t status;
-
-    Result() : status(LCB_SUCCESS) {
-    }
-};
-
 class Bucket {
   public:
     Bucket(Worker* w, const char* bname, const char* ep, const char* alias);
     ~Bucket();
 
-    // TODO: script not needed here
     virtual bool Initialize(Worker* w,
                             map<string, string>* bucket);
-    // TODO: cleanup SendUpdate/SendDelete
-    int SendUpdate(Worker* w, const char *msg);
-    int SendDelete(Worker* w, const char *msg);
 
     Isolate* GetIsolate() { return isolate_; }
     string GetBucketName() { return bucket_name; }
@@ -48,9 +36,6 @@ class Bucket {
     bool InstallMaps(map<string, string>* bucket);
 
     static Local<ObjectTemplate> MakeBucketMapTemplate(Isolate* isolate);
-
-    // TODO: Cleanup MakeN1QLMapTemplate
-    static Local<ObjectTemplate> MakeN1QLMapTemplate(Isolate* isolate);
 
     static void BucketGet(Local<Name> name,
                           const PropertyCallbackInfo<Value>& info);

@@ -27,6 +27,16 @@ struct worker_s {
     Worker* w;
 };
 
+struct Result {
+    string value;
+    lcb_CAS cas;
+    lcb_U32 itmflags;
+    lcb_error_t status;
+
+    Result() : cas(0), itmflags(0), status(LCB_SUCCESS) {
+    }
+};
+
 Local<String> createUtf8String(Isolate *isolate, const char *str);
 
 string ObjectToString(Local<Value> value);
@@ -73,6 +83,8 @@ class Worker {
     Persistent<Function> on_http_post_;
     Persistent<Function> on_timer_event_;
 
+    Global<ObjectTemplate> worker_template;
+
   private:
     bool ExecuteScript(Local<String> script);
 
@@ -83,6 +95,8 @@ class Worker {
     Isolate* isolate_;
 
     string last_exception;
+
+    lcb_t cb_instance;
 
     Bucket* b;
     N1QL* n;

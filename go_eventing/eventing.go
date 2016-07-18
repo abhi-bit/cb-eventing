@@ -30,8 +30,8 @@ const (
 )
 
 const (
-	DeploymentConfigLocation = "/var/tmp/deployment.json"
-	AppHandlerLocation       = "/var/tmp/handle_event.js"
+	DeploymentConfigLocation = "/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/deployment.json"
+	AppHandlerLocation       = "/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/handle_event.js"
 	AppMetaDataLocation      = "/var/tmp/metadata.json"
 	IDDataLocation           = "/var/tmp/id"
 	DeploymentStatusLocation = "/var/tmp/deploystatus"
@@ -182,14 +182,12 @@ func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 
 func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	content, _ := ioutil.ReadAll(r.Body)
-	log.Println("Content", string(content))
 	var app application
 	err := json.Unmarshal(content, &app)
 	if err != nil {
 		log.Println("Failed to decode application config", err)
 	}
 
-	fmt.Printf("Data recieved from angular js: %#v\n", app)
 	id := fmt.Sprintf("%d", app.ID)
 
 	ioutil.WriteFile(IDDataLocation, []byte(id), 0644)
@@ -203,13 +201,15 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	ioutil.WriteFile(AppNameLocation, []byte(app.Name), 0644)
 
 	// Sending control message to reload update application handlers
+	logging.Infof("Going to send message to quit channel")
 	quit <- 0
+	logging.Infof("Sent message to quit channel")
 	fmt.Fprintf(w, "Stored application config to disk\n")
 }
 
 func main() {
 	cluster := argParse()
-	quit = make(chan int)
+	quit = make(chan int, 1)
 
 	// setup cbauth
 	if options.auth != "" {
@@ -237,14 +237,14 @@ func main() {
 		http.HandleFunc("/get_application/", fetchAppSetup)
 		http.HandleFunc("/set_application/", storeAppSetup)
 
-		log.Fatal(http.ListenAndServe("localhost:6061", nil))
+		log.Fatal(http.ListenAndServe("localhost:6064", nil))
 	}()
 
 	// http callbacks for application
 	regexpHandler := &RegexpHandler{}
 	regexpHandler.HandleFunc(regexp.MustCompile("/*"), handleJsRequests)
 
-	log.Fatal(http.ListenAndServe("localhost:6062", regexpHandler))
+	log.Fatal(http.ListenAndServe("localhost:6063", regexpHandler))
 }
 
 func runWorker() {
@@ -262,6 +262,7 @@ func runWorker() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		var msg []interface{}
 
 		// Spawns up a brand new runtime env on top of V8
 		handle = worker.New()
@@ -272,9 +273,10 @@ func runWorker() {
 		}
 		handle.Load("handle_event.js", string(file))
 
-		for msg := range rch {
+		for {
 			select {
 			case <-quit:
+				logging.Infof("Got message on quit channel")
 				handle.TerminateExecution()
 				logging.Infof("Reloading application handler to pick up updates\n")
 				handle = worker.New()
@@ -284,59 +286,58 @@ func runWorker() {
 					logging.Infof("Failed to load application JS file\n")
 				}
 				handle.Load("handle_event.js", string(file))
-			default:
+			case msg = <-rch:
+				atomic.AddUint64(&ops, 1)
 
-			}
-			atomic.AddUint64(&ops, 1)
+				m := msg[1].(*mc.DcpEvent)
+				if m.Opcode == mcd.DCP_MUTATION {
+					logging.Infof("DCP_MUTATION opcode flag %d\n", m.Flags)
+					if m.Flags == JSONType {
 
-			m := msg[1].(*mc.DcpEvent)
-			if m.Opcode == mcd.DCP_MUTATION {
-				logging.Infof("DCP_MUTATION opcode flag %d\n", m.Flags)
-				if m.Flags == JSONType {
+						meta := eventMeta{Key: string(m.Key),
+							Type:   "json",
+							Cas:    strconv.FormatUint(m.Cas, 16),
+							Expiry: fmt.Sprint(m.Expiry),
+						}
 
-					meta := eventMeta{Key: string(m.Key),
-						Type:   "json",
-						Cas:    strconv.FormatUint(m.Cas, 16),
-						Expiry: fmt.Sprint(m.Expiry),
-					}
-
-					mEvent, err := json.Marshal(meta)
-					if err == nil {
-						//TODO: check for return code of SendUpdate
-						handle.SendUpdate(string(m.Value), string(mEvent), "json")
+						mEvent, err := json.Marshal(meta)
+						if err == nil {
+							//TODO: check for return code of SendUpdate
+							handle.SendUpdate(string(m.Value), string(mEvent), "json")
+						} else {
+							logging.Infof("Failed to marshal update event: %#v\n", meta)
+						}
 					} else {
-						logging.Infof("Failed to marshal update event: %#v\n", meta)
+
+						meta := eventMeta{Key: string(m.Key),
+							// TODO: Figure how to set JSON document with proper flag,
+							// Right now treating everything as json type
+							// This would blow up when you've base64 doc
+							Type:   "base64",
+							Cas:    strconv.FormatUint(m.Cas, 16),
+							Expiry: fmt.Sprint(m.Expiry),
+						}
+
+						mEvent, err := json.Marshal(meta)
+						if err == nil {
+							//TODO: check for return code of SendUpdate
+							handle.SendUpdate(string(m.Value), string(mEvent), "non-json")
+						} else {
+							logging.Infof("Failed to marshal update event: %#v\n", meta)
+						}
+
 					}
-				} else {
 
-					meta := eventMeta{Key: string(m.Key),
-						// TODO: Figure how to set JSON document with proper flag,
-						// Right now treating everything as json type
-						// This would blow up when you've base64 doc
-						Type:   "base64",
-						Cas:    strconv.FormatUint(m.Cas, 16),
-						Expiry: fmt.Sprint(m.Expiry),
+				} else if m.Opcode == mcd.DCP_DELETION {
+
+					msg, err := json.Marshal(m)
+					if err != nil {
+						logging.Infof("Failed to marshal delete event: %#v\n", m)
+						continue
 					}
-
-					mEvent, err := json.Marshal(meta)
-					if err == nil {
-						//TODO: check for return code of SendUpdate
-						handle.SendUpdate(string(m.Value), string(mEvent), "non-json")
-					} else {
-						logging.Infof("Failed to marshal update event: %#v\n", meta)
+					if err := handle.SendDelete(string(msg)); err == nil {
+						atomic.AddUint64(&ops, 1)
 					}
-
-				}
-
-			} else if m.Opcode == mcd.DCP_DELETION {
-
-				msg, err := json.Marshal(m)
-				if err != nil {
-					logging.Infof("Failed to marshal delete event: %#v\n", m)
-					continue
-				}
-				if err := handle.SendDelete(string(msg)); err == nil {
-					atomic.AddUint64(&ops, 1)
 				}
 			}
 		}

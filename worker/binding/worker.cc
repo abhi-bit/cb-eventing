@@ -2,6 +2,10 @@
 #include <cstring>
 #include <regex>
 
+#include <rapidjson/document.h>
+#include <rapidjson/writer.h>
+#include <rapidjson/stringbuffer.h>
+
 #include "bucket.h"
 #include "http_response.h"
 #include "n1ql.h"
@@ -11,6 +15,27 @@
 using namespace v8;
 
 //extern "C" {
+
+static void op_get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+    const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET*>(rb);
+    Result *result = reinterpret_cast<Result*>(rb->cookie);
+
+    result->status = resp->rc;
+    result->cas = resp->cas;
+    result->itmflags = resp->itmflags;
+    result->value.clear();
+
+    if (resp->rc == LCB_SUCCESS) {
+        result->value.assign(
+                reinterpret_cast<const char*>(resp->value),
+                resp->nvalue);
+    }
+}
+
+static void op_set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+    cout << "LCB_STORE RC: " << rb->rc << endl;
+}
+
 
 Local<String> createUtf8String(Isolate *isolate, const char *str) {
   return String::NewFromUtf8(isolate, str,
@@ -93,6 +118,98 @@ void Print(const FunctionCallbackInfo<Value>& args) {
   fflush(stdout);
 }
 
+void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
+  HandleScope handle_scope(args.GetIsolate());
+  String::Utf8Value callbackFuncName(args[0]);
+  String::Utf8Value documentID(args[1]);
+  String::Utf8Value startTimestamp(args[2]);
+
+  // Store a blob in KV store, blob structure:
+  // {
+  //    "callback_func": CallbackFunc1,
+  //    "document_id": docid,
+  //    "start_timestamp": timestamp
+  // }
+  string callback_func, doc_id, timestamp, value;
+  callback_func.assign(string(*callbackFuncName));
+  doc_id.assign(string(*documentID));
+  timestamp.assign(string(*startTimestamp));
+
+  rapidjson::StringBuffer s;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(s);
+
+  writer.StartObject();
+
+  writer.Key("callback_func");
+  writer.String(callback_func.c_str(), callback_func.length());
+  writer.Key("document_id");
+  writer.String(doc_id.c_str(), doc_id.length());
+  writer.Key("start_timestamp");
+  writer.String(timestamp.c_str(), timestamp.length());
+
+  writer.EndObject();
+
+  value.assign(s.GetString());
+
+  lcb_t* bucket_cb_handle = reinterpret_cast<lcb_t*>(args.GetIsolate()->GetData(0));
+
+  lcb_CMDSTORE scmd = { 0 };
+  LCB_CMD_SET_KEY(&scmd, doc_id.c_str(), doc_id.length());
+  LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
+  scmd.operation = LCB_SET;
+
+  lcb_sched_enter(*bucket_cb_handle);
+  lcb_store3(*bucket_cb_handle, NULL, &scmd);
+  lcb_sched_leave(*bucket_cb_handle);
+  lcb_wait(*bucket_cb_handle);
+
+  // Append doc_id to key that keeps tracks of doc_ids for which
+  // callbacks need to be triggered at any given point in time
+
+  Result result;
+  lcb_CMDGET gcmd = { 0 };
+  LCB_CMD_SET_KEY(&gcmd, timestamp.c_str(), timestamp.length());
+  lcb_sched_enter(*bucket_cb_handle);
+  lcb_get3(*bucket_cb_handle, &result, &gcmd);
+  lcb_sched_leave(*bucket_cb_handle);
+  lcb_wait(*bucket_cb_handle);
+
+  cout << "GET call to timestamp_marker, dump: " << result.value
+       << " doc id" << doc_id << endl;
+
+  if (result.status != LCB_SUCCESS) {
+    // LCB_ADD to KV
+    // TODO: error catching by setting up store_callback
+    string timestamp_marker("");
+    lcb_CMDSTORE acmd = { 0 };
+    LCB_CMD_SET_KEY(&acmd, timestamp.c_str(), timestamp.length());
+    LCB_CMD_SET_VALUE(&acmd, timestamp_marker.c_str(), timestamp_marker.length());
+    acmd.operation = LCB_ADD;
+
+    lcb_sched_enter(*bucket_cb_handle);
+    lcb_store3(*bucket_cb_handle, NULL, &acmd);
+    lcb_sched_leave(*bucket_cb_handle);
+    lcb_wait(*bucket_cb_handle);
+  }
+
+  // appending delimiter ";"
+  doc_id.append(";");
+  lcb_CMDSTORE cmd = { 0 };
+  lcb_IOV iov[2];
+  cmd.operation = LCB_APPEND;
+  iov[0].iov_base = (void *)doc_id.c_str();
+  iov[0].iov_len = doc_id.length();
+
+  LCB_CMD_SET_VALUEIOV(&cmd, iov, 1);
+  LCB_CMD_SET_KEY(&cmd, timestamp.c_str(), timestamp.length());
+  lcb_sched_enter(*bucket_cb_handle);
+  lcb_store3(*bucket_cb_handle, NULL, &cmd);
+  lcb_sched_leave(*bucket_cb_handle);
+  lcb_wait(*bucket_cb_handle);
+}
+
+
+
 // Exception details will be appended to the first argument.
 string ExceptionString(Isolate* isolate, TryCatch* try_catch) {
   string out;
@@ -169,6 +286,8 @@ Worker::Worker(int tindex) {
 
   global->Set(String::NewFromUtf8(GetIsolate(), "log"),
               FunctionTemplate::New(GetIsolate(), Print));
+  global->Set(String::NewFromUtf8(GetIsolate(), "registerCallback"),
+              FunctionTemplate::New(GetIsolate(), RegisterCallback));
   if(try_catch.HasCaught()) {
     string last_exception = ExceptionString(GetIsolate(), &try_catch);
     printf("ERROR Print exception: %s\n", last_exception.c_str());
@@ -184,9 +303,7 @@ Worker::Worker(int tindex) {
   map<string, map<string, vector<string> > >::iterator it = result.begin();
 
   for (; it != result.end(); it++) {
-      cout << "it->first " << it->first << endl;
 
-      cout << __FILE__ << " " << __FUNCTION__ << " " << __LINE__ << endl;
       if (it->first == "buckets") {
           map<string, vector<string> >::iterator bucket = result["buckets"].begin();
           for (; bucket != result["buckets"].end(); bucket++) {
@@ -233,6 +350,26 @@ Worker::Worker(int tindex) {
       }
   }
   r = new HTTPResponse(this);
+
+  // Register a lcb_t handle for storing timer based callbacks in CB
+  // TODO: Fix the hardcoding i.e. allow customer to create
+  // bucket with any name and it should be picked from config file
+  string connstr = "couchbase://10.142.200.101/eventing";
+
+  // lcb related setup
+  lcb_create_st crst;
+  memset(&crst, 0, sizeof crst);
+
+  crst.version = 3;
+  crst.v.v3.connstr = connstr.c_str();
+
+  lcb_create(&cb_instance, &crst);
+  lcb_connect(cb_instance);
+  lcb_wait(cb_instance);
+
+  lcb_install_callback3(cb_instance, LCB_CALLBACK_GET, op_get_callback);
+  lcb_install_callback3(cb_instance, LCB_CALLBACK_STORE, op_set_callback);
+
 }
 
 Worker::~Worker() {
@@ -372,6 +509,8 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
     exit(2);
   }
 
+  // Wrap around the lcb handle into v8 isolate
+  this->GetIsolate()->SetData(0, (void *)(&cb_instance));
   return 0;
 }
 
@@ -401,7 +540,6 @@ bool Worker::ExecuteScript(Local<String> script) {
   }
   return true;
 }
-
 
 const char* Worker::WorkerLastException() {
   return last_exception.c_str();

@@ -10,13 +10,18 @@ function OnUpdate(doc, meta) {
 
     delete credit_bucket[doc.uuid];
 
+    var d = new Date();
+    var n = ISODateString(d);
+    log("ISO 8601: ", n);
+
+    registerCallback("OnTimerEvent", meta.key, n);
     enqueue(order_queue, doc.uuid);
   }
 }
 
 function OnDelete(msg) {
   var bucket = "beer-sample";
-  var limit = 10;
+  var limit = 5;
   var type = "brewery";
 
   var n1qlResult = n1ql("select ${bucket}.name from ${bucket} where ${bucket}.type == '${type}' limit ${limit}");
@@ -43,7 +48,7 @@ function OnHTTPGet(req, res) {
   } else if (req.path === "/get_brewery_in_cali") {
 
       var state = "California";
-      var limit = 1;
+      var limit = 10;
       var n1qlResult = n1ql("select * from ${bucket} where ${bucket}.state == '${state}' limit ${limit};");
       res.brewery_in_cali = n1qlResult;
       res.query_outpt_row_count = n1qlResult.length;

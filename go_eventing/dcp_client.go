@@ -38,7 +38,6 @@ func startBucket(cluster, bucketn string, kvaddrs []string) int {
 	logging.Infof("Trying to connect with %q cluster: %q kvaddrs: %q\n",
 		bucketn, cluster, kvaddrs)
 	b, err := common.ConnectBucket(cluster, "default", bucketn)
-	logging.Infof("ABHI: Connected with %q\n", bucketn)
 
 	var sleep time.Duration
 	sleep = 1

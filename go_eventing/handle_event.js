@@ -14,9 +14,13 @@ function OnUpdate(doc, meta) {
     var n = ISODateString(d);
     log("ISO 8601: ", n);
 
-    registerCallback("OnTimerEvent", meta.key, n);
+    registerCallback("CallbackFunc1", meta.key, n);
     enqueue(order_queue, doc.uuid);
   }
+}
+
+function CallbackFunc1(doc_id) {
+    log("DocID recieved by callback: ", doc_id);
 }
 
 function OnDelete(msg) {

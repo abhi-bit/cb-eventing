@@ -26,6 +26,8 @@ const char* worker_send_http_get(worker* w, const char* http_req);
 
 const char* worker_send_http_post(worker* w, const char* http_req);
 
+void worker_send_timer_callback(worker* w, const char* keys);
+
 void worker_dispose(worker* w);
 void worker_terminate_execution(worker* w);
 

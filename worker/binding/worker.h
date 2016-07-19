@@ -70,6 +70,7 @@ class Worker {
     int SendDelete(const char* msg);
     const char* SendHTTPGet(const char* http_req);
     const char* SendHTTPPost(const char* http_req);
+    void SendTimerCallback(const char* keys);
 
     void WorkerDispose();
     void WorkerTerminateExecution();

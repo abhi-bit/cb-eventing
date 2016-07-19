@@ -162,3 +162,12 @@ func (w *Worker) SendHTTPPost(r string) string {
 	res := C.worker_send_http_post(w.worker.cWorker, req)
 	return C.GoString(res)
 }
+
+// SendTimerCallback send list of keys against which timed callbacks need to be triggered
+func (w *Worker) SendTimerCallback(k string) {
+	keys := C.CString(string(k))
+	defer C.free(unsafe.Pointer(keys))
+
+	C.worker_send_timer_callback(w.worker.cWorker, keys)
+	return
+}

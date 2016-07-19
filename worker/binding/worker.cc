@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <regex>
+#include <sstream>
 
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
@@ -29,11 +30,13 @@ static void op_get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) 
         result->value.assign(
                 reinterpret_cast<const char*>(resp->value),
                 resp->nvalue);
+    } else {
+        cerr << "lcb get failed with error " << lcb_strerror(instance, resp->rc) << endl;
     }
 }
 
 static void op_set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-    cout << "LCB_STORE RC: " << rb->rc << endl;
+    cout << "lcb set response code: " << lcb_strerror(instance, rb->rc) << endl;
 }
 
 
@@ -142,7 +145,7 @@ void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
 
   writer.Key("callback_func");
   writer.String(callback_func.c_str(), callback_func.length());
-  writer.Key("document_id");
+  writer.Key("doc_id");
   writer.String(doc_id.c_str(), doc_id.length());
   writer.Key("start_timestamp");
   writer.String(timestamp.c_str(), timestamp.length());
@@ -173,9 +176,6 @@ void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
   lcb_get3(*bucket_cb_handle, &result, &gcmd);
   lcb_sched_leave(*bucket_cb_handle);
   lcb_wait(*bucket_cb_handle);
-
-  cout << "GET call to timestamp_marker, dump: " << result.value
-       << " doc id" << doc_id << endl;
 
   if (result.status != LCB_SUCCESS) {
     // LCB_ADD to KV
@@ -269,6 +269,21 @@ string ExceptionString(Isolate* isolate, TryCatch* try_catch) {
   return out;
 }
 
+vector<string> &split(const string &s, char delim, vector<string> &elems) {
+    stringstream ss(s);
+    string item;
+    while (getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+    return elems;
+}
+
+vector<string> split(const string &s, char delim) {
+    vector<string> elems;
+    split(s, delim, elems);
+    return elems;
+}
+
 Worker::Worker(int tindex) {
   Isolate::CreateParams create_params;
   create_params.array_buffer_allocator = &allocator;
@@ -354,7 +369,7 @@ Worker::Worker(int tindex) {
   // Register a lcb_t handle for storing timer based callbacks in CB
   // TODO: Fix the hardcoding i.e. allow customer to create
   // bucket with any name and it should be picked from config file
-  string connstr = "couchbase://10.142.200.101/eventing";
+  string connstr = "couchbase://choco/eventing";
 
   // lcb related setup
   lcb_create_st crst;
@@ -553,11 +568,6 @@ const char* Worker::WorkerVersion() {
   return V8::GetVersion();
 }
 
-void PrintMap(map<string, string> obj) {
-  for(auto elem : obj)
-    cout << elem.first << " " << elem.second << endl;
-}
-
 const char* Worker::SendHTTPGet(const char* http_req) {
   Locker locker(GetIsolate());
   Isolate::Scope isolate_scope(GetIsolate());
@@ -608,6 +618,58 @@ const char* Worker::SendHTTPPost(const char* http_req) {
   on_http_post->Call(context->Global(), 2, args);
 
   return this->r->ConvertMapToJson();
+}
+
+void Worker::SendTimerCallback(const char* k) {
+  Locker locker(GetIsolate());
+  Isolate::Scope isolate_scope(GetIsolate());
+  HandleScope handle_scope(GetIsolate());
+
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+  Context::Scope context_scope(context);
+
+  vector<string> keys = split(k, ';');
+
+  for (auto key : keys) {
+    Result result;
+    lcb_CMDGET gcmd = { 0 };
+    LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
+    lcb_sched_enter(cb_instance);
+    lcb_get3(cb_instance, &result, &gcmd);
+    lcb_sched_leave(cb_instance);
+    lcb_wait(cb_instance);
+
+    cout << __FILE__ << " " << __FUNCTION__ << " " << __LINE__
+         << " result.value: " << result.value << endl;
+
+    rapidjson::Document doc;
+    if (doc.Parse(result.value.c_str()).HasParseError()) {
+        cerr << __LINE__ << " " << __FUNCTION__ << " " << endl;
+        return;
+    }
+
+    string callback_func, doc_id, start_timestamp;
+    assert(doc.IsObject());
+    {
+        rapidjson::Value& cf = doc["callback_func"];
+        rapidjson::Value& id = doc["doc_id"];
+        rapidjson::Value& sts = doc["start_timestamp"];
+
+        callback_func.assign(cf.GetString());
+        doc_id.assign(id.GetString());
+        start_timestamp.assign(sts.GetString());
+    }
+
+    // TODO: check for anonymous JS functions. Disallow them completely
+    Handle<Value> val = context->Global()->Get(
+            createUtf8String(GetIsolate(), callback_func.c_str()));
+    Handle<Function> cb_func = Handle<Function>::Cast(val);
+
+    Handle<Value> arg[1];
+    arg[0] = String::NewFromUtf8(GetIsolate(), doc_id.c_str());
+
+    cb_func->Call(context->Global(), 1, arg);
+  }
 }
 
 int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
@@ -716,6 +778,10 @@ const char* worker_last_exception(worker* w) {
 
 int worker_load(worker* w, char* name_s, char* source_s) {
     return w->w->WorkerLoad(name_s, source_s);
+}
+
+void worker_send_timer_callback(worker* w, const char* keys) {
+    w->w->SendTimerCallback(keys);
 }
 
 void worker_dispose(worker* w) {

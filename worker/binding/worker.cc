@@ -15,6 +15,9 @@
 
 using namespace v8;
 
+string cb_cluster_endpoint;
+string cb_cluster_bucket;
+
 //extern "C" {
 
 static void op_get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
@@ -318,6 +321,9 @@ Worker::Worker(int tindex) {
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 
+  cb_cluster_endpoint.assign("10.142.200.101");
+  cb_cluster_bucket.assign("default");
+
  //context->Enter();
 
   map<string, map<string, vector<string> > > result = ParseDeployment();
@@ -330,7 +336,7 @@ Worker::Worker(int tindex) {
           for (; bucket != result["buckets"].end(); bucket++) {
             string bucket_alias = bucket->first;
             string bucket_name = result["buckets"][bucket_alias][0];
-            string endpoint = result["buckets"][bucket_alias][1];
+            string endpoint(cb_cluster_endpoint);
 
             b = new Bucket(this,
                            bucket_name.c_str(),
@@ -342,8 +348,8 @@ Worker::Worker(int tindex) {
           map<string, vector<string> >::iterator n1ql = result["n1ql"].begin();
           for (; n1ql != result["n1ql"].end(); n1ql++) {
             string n1ql_alias = n1ql->first;
-            string bucket_name = result["n1ql"][n1ql_alias][0];
-            string endpoint = result["n1ql"][n1ql_alias][1];
+            string bucket_name(cb_cluster_bucket);
+            string endpoint(cb_cluster_endpoint);
 
             cout << "bucket: " << bucket_name << " endpoint: " << endpoint
                  << " n1ql_alias: " << n1ql_alias << endl;
@@ -356,16 +362,18 @@ Worker::Worker(int tindex) {
       if (it->first == "queue") {
           map<string, vector<string> >::iterator queue = result["queue"].begin();
           for (; queue != result["queue"].end(); queue++) {
-            string queue_name = queue->first;
-            string endpoint = result["queue"][queue_name][1];
-            string queue_alias = result["queue"][queue_name][2];
+            string provider = queue->first;
+            string endpoint = result["queue"][provider][1];
+            string queue_alias = result["queue"][provider][2];
+            string queue_name = result["queue"][provider][3];
 
-            cout << "queue_name: " << queue_name << " endpoint: " << endpoint
-                 << " queue_alias: " << queue_alias << endl;
+            cout << "provider: " << provider << " queue_name" << queue_name
+                 << "endpoint: " << endpoint << " queue_alias: " << queue_alias << endl;
             q = new Queue(this,
-                          queue_name.c_str(),
+                          provider.c_str(),
                           endpoint.c_str(),
-                          queue_alias.c_str());
+                          queue_alias.c_str(),
+                          queue_name.c_str());
           }
 
       }
@@ -375,7 +383,7 @@ Worker::Worker(int tindex) {
   // Register a lcb_t handle for storing timer based callbacks in CB
   // TODO: Fix the hardcoding i.e. allow customer to create
   // bucket with any name and it should be picked from config file
-  string connstr = "couchbase://donut/eventing";
+  string connstr = "couchbase://" + cb_cluster_endpoint + "/eventing";
 
   // lcb related setup
   lcb_create_st crst;

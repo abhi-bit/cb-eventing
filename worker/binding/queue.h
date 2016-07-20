@@ -16,7 +16,8 @@ using namespace v8;
 
 class Queue {
   public:
-    Queue(Worker* w, const char* qname, const char* ep, const char* alias);
+    Queue(Worker* w, const char* provider, const char* ep,
+          const char* alias, const char* qname);
     ~Queue();
 
     virtual bool Initialize(Worker* w,
@@ -41,6 +42,7 @@ class Queue {
     Isolate* isolate_;
     Persistent<Context> context_;
 
+    string provider;
     string queue_name;
     string endpoint;
     string queue_alias;

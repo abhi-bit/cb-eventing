@@ -1,21 +1,19 @@
 {
    "buckets" : [
       {
-         "bucket_name" : "beer-sample",
-         "endpoint" : "172.16.12.41",
+         "bucket_name" : "default",
          "alias" : "credit_bucket"
       }
    ],
    "queue" : [
       {
-         "queue_name" : "redis",
+         "provider" : "redis",
+         "queue_name": "order_queue",
          "endpoint" : "127.0.0.1:6379",
          "alias" : "order_queue"
       }
    ],
    "n1ql" : [{
-          "bucket_name" : "default",
-          "endpoint" : "172.16.12.41",
           "alias" : "n1ql_blr_cluster"
    }]
 }

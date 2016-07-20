@@ -11,12 +11,12 @@ function OnUpdate(doc, meta) {
 
     //delete credit_bucket[meta.key];
 
-    /*var d = new Date();
+    var d = new Date();
     var n = ISODateString(d);
     log("ISO 8601: ", n);
 
     registerCallback("CallbackFunc1", meta.key, n);
-    enqueue(order_queue, doc.uuid);*/
+    enqueue(order_queue, meta.key);
   }
 }
 

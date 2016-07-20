@@ -29,11 +29,9 @@ map<string, map<string, vector<string> > > ParseDeployment() {
           vector<string> bucket_info;
 
           rapidjson::Value& bucket_name = buckets[i]["bucket_name"];
-          rapidjson::Value& endpoint = buckets[i]["endpoint"];
           rapidjson::Value& alias = buckets[i]["alias"];
 
           bucket_info.push_back(bucket_name.GetString());
-          bucket_info.push_back(endpoint.GetString());
           bucket_info.push_back(alias.GetString());
 
           buckets_info[alias.GetString()] = bucket_info;
@@ -44,15 +42,17 @@ map<string, map<string, vector<string> > > ParseDeployment() {
       for(rapidjson::SizeType i = 0; i < queues.Size(); i++) {
           vector<string> queue_info;
 
+          rapidjson::Value& provider = queues[i]["provider"];
           rapidjson::Value& queue_name = queues[i]["queue_name"];
           rapidjson::Value& endpoint = queues[i]["endpoint"];
           rapidjson::Value& alias = queues[i]["alias"];
 
-          queue_info.push_back(queue_name.GetString());
+          queue_info.push_back(provider.GetString());
           queue_info.push_back(endpoint.GetString());
           queue_info.push_back(alias.GetString());
+          queue_info.push_back(queue_name.GetString());
 
-          queues_info[queue_name.GetString()] = queue_info;
+          queues_info[provider.GetString()] = queue_info;
       }
       out["queue"] = queues_info;
 
@@ -61,12 +61,8 @@ map<string, map<string, vector<string> > > ParseDeployment() {
       for(rapidjson::SizeType i = 0; i < n1ql.Size(); i++) {
           vector<string> n1ql_info;
 
-          rapidjson::Value& bucket_name = n1ql[i]["bucket_name"];
-          rapidjson::Value& endpoint = n1ql[i]["endpoint"];
           rapidjson::Value& n1ql_alias = n1ql[i]["alias"];
 
-          n1ql_info.push_back(bucket_name.GetString());
-          n1ql_info.push_back(endpoint.GetString());
           n1ql_info.push_back(n1ql_alias.GetString());
 
           n1qls_info[n1ql_alias.GetString()] = n1ql_info;

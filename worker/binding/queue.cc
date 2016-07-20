@@ -17,21 +17,23 @@ using namespace std;
 using namespace v8;
 
 Queue::Queue(Worker* w,
-             const char* qname, const char* ep,
-             const char* alias) {
+             const char* p, const char* ep,
+             const char* alias, const char* qname) {
   isolate_ = w->GetIsolate();
   context_.Reset(isolate_, w->context_);
 
-  queue_name.assign(qname);
+  provider.assign(p);
   endpoint.assign(ep);
   queue_alias.assign(alias);
+  queue_name.assign(qname);
 
   std::string delimiter = ":";
   std::string hostname = endpoint.substr(0, endpoint.find(delimiter));
   endpoint.erase(0, endpoint.find(delimiter) + delimiter.length());
   std::string port = endpoint.substr(0, endpoint.find(delimiter));
 
-  std::cout << "QUEUE:: queue_name: " << queue_name
+  std::cout << "QUEUE:: provider: " << provider
+            << " queue_name: " << queue_name
             << " hostname: " << hostname
             << " port: " << port
             << " queue_alias: " << queue_alias << std::endl;
@@ -41,18 +43,19 @@ Queue::Queue(Worker* w,
   c = redisConnectWithTimeout(hostname.c_str(), std::stoi(port), timeout);
   if (c == NULL || c->err) {
       if (c) {
-          std::cout << "Connection error: " << c->errstr << std::endl;
+          cout << "Connection error: " << c->errstr << endl;
           redisFree(c);
       } else {
-          std::cout << "Connection error: can't allocate redis context"
-                    << std::endl;
+          cout << "Connection error: can't allocate redis context" << endl;
       }
       exit(1);
   }
 
   // Delete pre-existing list
   redisReply* reply;
-  reply = (redisReply*) redisCommand(c, "DEL eventing");
+  string del_command = "DEL ";
+  del_command.append(queue_name.c_str());
+  reply = (redisReply*) redisCommand(c, del_command.c_str());
   freeReplyObject(reply);
 }
 
@@ -78,7 +81,7 @@ Local<ObjectTemplate> Queue::MakeQueueMapTemplate(Isolate* isolate) {
   EscapableHandleScope handle_scope(isolate);
 
   Local<ObjectTemplate> result = ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(2);
+  result->SetInternalFieldCount(3);
   result->SetHandler(NamedPropertyHandlerConfiguration(QueueGetCall));
 
   return handle_scope.Escape(result);
@@ -99,9 +102,11 @@ Local<Object> Queue::WrapQueueMap(map<string, string>* obj) {
 
   Local<External> map_ptr = External::New(GetIsolate(), obj);
   Local<External> redis_conn_obj = External::New(GetIsolate(), c);
+  Local<External> qname = External::New(GetIsolate(), &queue_name);
 
   result->SetInternalField(0, map_ptr);
   result->SetInternalField(1, redis_conn_obj);
+  result->SetInternalField(2, qname);
 
   return handle_scope.Escape(result);
 }
@@ -135,6 +140,12 @@ redisContext* UnwrapRedisContext(Local<Object> obj) {
   return static_cast<redisContext*>(ptr);
 }
 
+const char* UnwrapQueueName(Local<Object> obj) {
+  Local<External> field = Local<External>::Cast(obj->GetInternalField(2));
+  void* ptr = field->Value();
+  return static_cast<const char*>(ptr);
+}
+
 void Queue::QueueGetCall(Local<Name> name,
                          const PropertyCallbackInfo<Value>& info) {
   if (name->IsSymbol()) return;
@@ -142,10 +153,14 @@ void Queue::QueueGetCall(Local<Name> name,
   string doc = ObjectToString(Local<String>::Cast(name));
 
   redisContext* redis_context = UnwrapRedisContext(info.Holder());
+  string qname(UnwrapQueueName(info.Holder()));
 
-  // TODO: Fix the bug here
-  cout << "ABHI: RedisPush " << doc.c_str() << endl;
+  cerr << "ABHI: RedisPush " << doc.c_str() << endl;
+
+  // TODO: Why is `16` showing up in buffer when const char* is fetched
+  // from isolate heap
+  qname.erase(0, 1);
   redisReply* reply = (redisReply*)redisCommand(redis_context,
-                                   "LPUSH eventing %s", doc.c_str());
+                                   "LPUSH %s %s", qname.c_str(), doc.c_str());
   freeReplyObject(reply);
 }

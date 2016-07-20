@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include<sstream>
 #include <vector>
 
 #include <rapidjson/document.h>
@@ -32,6 +33,32 @@ static void get_callback(lcb_t, int, const lcb_RESPBASE *rb) {
     }
 }
 
+static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+    const lcb_RESPSTORE *resp = reinterpret_cast<const lcb_RESPSTORE*>(rb);
+    Result *result = reinterpret_cast<Result*>(rb->cookie);
+
+    result->status = resp->rc;
+    result->cas = resp->cas;
+
+    cerr << "LCB_STORE callback " << lcb_strerror(instance, result->status)
+         << " cas " << resp->cas << endl;
+}
+
+// convert Little endian unsigned int64 to Big endian notation
+uint64_t htonll_64(uint64_t value) {
+    static const int num = 42;
+
+    if (*reinterpret_cast<const char*>(&num) == num) {
+        const uint32_t high_part = htonl(static_cast<uint32_t>(value >> 32));
+        const uint32_t low_part = htonl(static_cast<uint32_t>(value & 0xFFFFFFFFLL));
+
+        return (static_cast<uint64_t>(low_part) << 32) | high_part;
+    } else {
+        return value;
+    }
+}
+
+
 Bucket::Bucket(Worker* w,
                const char* bname,
                const char* ep, const char* alias) {
@@ -41,6 +68,8 @@ Bucket::Bucket(Worker* w,
   bucket_name.assign(bname);
   endpoint.assign(ep);
   bucket_alias.assign(alias);
+
+  worker = w;
 
   string connstr = "couchbase://" + GetEndPoint() + "/" + GetBucketName();
 
@@ -56,7 +85,7 @@ Bucket::Bucket(Worker* w,
   lcb_wait(bucket_lcb_obj);
 
   lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_GET, get_callback);
-
+  lcb_install_callback3(bucket_lcb_obj, LCB_CALLBACK_STORE, set_callback);
 }
 
 Bucket::~Bucket() {
@@ -96,8 +125,11 @@ Local<Object> Bucket::WrapBucketMap(map<string, string>* obj) {
   Local<External> map_ptr = External::New(GetIsolate(), obj);
   Local<External> bucket_lcb_obj_ptr = External::New(GetIsolate(),
                                                      &bucket_lcb_obj);
+  Local<External> worker_cb_instance = External::New(GetIsolate(),
+                                                      &(worker->cb_instance));
   result->SetInternalField(0, map_ptr);
   result->SetInternalField(1, bucket_lcb_obj_ptr);
+  result->SetInternalField(2, worker_cb_instance);
 
   return handle_scope.Escape(result);
 }
@@ -154,16 +186,34 @@ void Bucket::BucketSet(Local<Name> name, Local<Value> value_obj,
   string value = ToString(info.GetIsolate(), value_obj);
 
   lcb_t* bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
+  lcb_t* cb_instance = UnwrapWorkerLcbInstance(info.Holder());
 
+  Result result;
   lcb_CMDSTORE scmd = { 0 };
   LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
   LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
   scmd.operation = LCB_SET;
 
   lcb_sched_enter(*bucket_lcb_obj_ptr);
-  lcb_store3(*bucket_lcb_obj_ptr, NULL, &scmd);
+  lcb_store3(*bucket_lcb_obj_ptr, &result, &scmd);
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   lcb_wait(*bucket_lcb_obj_ptr);
+
+  // convert uint64_t cas to string
+  ostringstream out;
+  string cas_key;
+  out << htonll_64(result.cas);
+  cas_key += out.str();
+
+  scmd = { 0 };
+  LCB_CMD_SET_KEY(&scmd, cas_key.c_str(), cas_key.length());
+  LCB_CMD_SET_VALUE(&scmd, key.c_str(), key.length());
+  scmd.operation = LCB_SET;
+
+  lcb_sched_enter(*cb_instance);
+  lcb_store3(*cb_instance, NULL, &scmd);
+  lcb_sched_leave(*cb_instance);
+  lcb_wait(*cb_instance);
 
   info.GetReturnValue().Set(value_obj);
 }
@@ -192,7 +242,7 @@ Local<ObjectTemplate> Bucket::MakeBucketMapTemplate(
   EscapableHandleScope handle_scope(isolate);
 
   Local<ObjectTemplate> result = ObjectTemplate::New(isolate);
-  result->SetInternalFieldCount(2);
+  result->SetInternalFieldCount(3);
   result->SetHandler(NamedPropertyHandlerConfiguration(BucketGet,
                                                        BucketSet,
                                                        NULL,

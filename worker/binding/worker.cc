@@ -36,7 +36,7 @@ static void op_get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) 
 }
 
 static void op_set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-    cout << "lcb set response code: " << lcb_strerror(instance, rb->rc) << endl;
+    cerr << "lcb set response code: " << lcb_strerror(instance, rb->rc) << endl;
 }
 
 
@@ -72,6 +72,12 @@ lcb_t* UnwrapLcbInstance(Local<Object> obj) {
   Local<External> field = Local<External>::Cast(obj->GetInternalField(1));
   void* ptr = field->Value();
   return static_cast<lcb_t*>(ptr);
+}
+
+lcb_t* UnwrapWorkerLcbInstance(Local<Object> obj) {
+    Local<External> field = Local<External>::Cast(obj->GetInternalField(2));
+    void *ptr = field->Value();
+    return static_cast<lcb_t*>(ptr);
 }
 
 map<string, string>* UnwrapMap(Local<Object> obj) {
@@ -369,7 +375,7 @@ Worker::Worker(int tindex) {
   // Register a lcb_t handle for storing timer based callbacks in CB
   // TODO: Fix the hardcoding i.e. allow customer to create
   // bucket with any name and it should be picked from config file
-  string connstr = "couchbase://choco/eventing";
+  string connstr = "couchbase://donut/eventing";
 
   // lcb related setup
   lcb_create_st crst;

@@ -14,8 +14,6 @@
 using namespace std;
 using namespace v8;
 
-namespace Couchbase { class Client; }
-
 class Bucket {
   public:
     Bucket(Worker* w, const char* bname, const char* ep, const char* alias);
@@ -53,6 +51,7 @@ class Bucket {
     string endpoint;
     string bucket_alias;
 
+    Worker* worker;
 };
 
 #endif

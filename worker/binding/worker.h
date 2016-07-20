@@ -45,6 +45,8 @@ string ToString(Isolate* isolate, Handle<Value> object);
 
 lcb_t* UnwrapLcbInstance(Local<Object> obj);
 
+lcb_t* UnwrapWorkerLcbInstance(Local<Object> obj);
+
 map<string, string>* UnwrapMap(Local<Object> obj);
 
 class ArrayBufferAllocator : public ArrayBuffer::Allocator {
@@ -86,6 +88,8 @@ class Worker {
 
     Global<ObjectTemplate> worker_template;
 
+    lcb_t cb_instance;
+
   private:
     bool ExecuteScript(Local<String> script);
 
@@ -96,8 +100,6 @@ class Worker {
     Isolate* isolate_;
 
     string last_exception;
-
-    lcb_t cb_instance;
 
     Bucket* b;
     N1QL* n;

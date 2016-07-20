@@ -12,8 +12,11 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/logging"
 )
+
+var bucket *couchbase.Bucket
 
 func argParse() string {
 	var buckets string
@@ -69,6 +72,16 @@ func usage() {
 func main() {
 	cluster := argParse()
 	quit = make(chan int, 1)
+
+	// create eventing bucket conn obj
+	c, err := couchbase.Connect("http://donut:8091")
+	mf(err, "connect failure")
+
+	pool, err := c.GetPool("default")
+	mf(err, "pool")
+
+	bucket, err = pool.GetBucket("eventing")
+	mf(err, "bucket connection")
 
 	// setup cbauth
 	if options.auth != "" {

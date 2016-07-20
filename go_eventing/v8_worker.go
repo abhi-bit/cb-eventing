@@ -78,41 +78,52 @@ func runWorker() {
 
 				m := msg[1].(*mc.DcpEvent)
 				if m.Opcode == mcd.DCP_MUTATION {
-					logging.Infof("DCP_MUTATION opcode flag %d\n", m.Flags)
-					if m.Flags == JSONType {
 
-						meta := eventMeta{Key: string(m.Key),
-							Type:   "json",
-							Cas:    strconv.FormatUint(m.Cas, 16),
-							Expiry: fmt.Sprint(m.Expiry),
-						}
+					logging.Infof("DCP_MUTATION opcode flag %d cas: %d\n", m.Flags, m.Cas)
 
-						mEvent, err := json.Marshal(meta)
-						if err == nil {
-							//TODO: check for return code of SendUpdate
-							handle.SendUpdate(string(m.Value), string(mEvent), "json")
+					// Fetching CAS value from KV to ensure idempotent-ness of callback handlers
+					casValue := fmt.Sprintf("%d", m.Cas)
+					_, err := bucket.GetRaw(casValue)
+
+					if err != nil {
+						if m.Flags == JSONType {
+
+							meta := eventMeta{Key: string(m.Key),
+								Type:   "json",
+								Cas:    strconv.FormatUint(m.Cas, 16),
+								Expiry: fmt.Sprint(m.Expiry),
+							}
+
+							mEvent, err := json.Marshal(meta)
+							if err == nil {
+								//TODO: check for return code of SendUpdate
+								handle.SendUpdate(string(m.Value), string(mEvent), "json")
+							} else {
+								logging.Infof("Failed to marshal update event: %#v\n", meta)
+							}
 						} else {
-							logging.Infof("Failed to marshal update event: %#v\n", meta)
+
+							meta := eventMeta{Key: string(m.Key),
+								// TODO: Figure how to set JSON document with proper flag,
+								// Right now treating everything as json type
+								// This would blow up when you've base64 doc
+								Type:   "json",
+								Cas:    strconv.FormatUint(m.Cas, 16),
+								Expiry: fmt.Sprint(m.Expiry),
+							}
+
+							mEvent, err := json.Marshal(meta)
+							if err == nil {
+								//TODO: check for return code of SendUpdate
+								handle.SendUpdate(string(m.Value), string(mEvent), "json")
+							} else {
+								logging.Infof("Failed to marshal update event: %#v\n", meta)
+							}
+
 						}
 					} else {
-
-						meta := eventMeta{Key: string(m.Key),
-							// TODO: Figure how to set JSON document with proper flag,
-							// Right now treating everything as json type
-							// This would blow up when you've base64 doc
-							Type:   "base64",
-							Cas:    strconv.FormatUint(m.Cas, 16),
-							Expiry: fmt.Sprint(m.Expiry),
-						}
-
-						mEvent, err := json.Marshal(meta)
-						if err == nil {
-							//TODO: check for return code of SendUpdate
-							handle.SendUpdate(string(m.Value), string(mEvent), "non-json")
-						} else {
-							logging.Infof("Failed to marshal update event: %#v\n", meta)
-						}
-
+						logging.Infof("Skipped mutation triggered by handler code, cas: %s\n", casValue)
+						bucket.Delete(casValue)
 					}
 
 				} else if m.Opcode == mcd.DCP_DELETION {

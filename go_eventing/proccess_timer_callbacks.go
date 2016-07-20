@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	worker "github.com/abhi-bit/eventing/worker"
-	"github.com/couchbase/go-couchbase"
 	"github.com/jehiah/go-strftime"
 )
 
@@ -30,16 +30,6 @@ func NewISO8601(t time.Time) time.Time {
 }
 
 func startTimerProcessing(handle *worker.Worker) {
-	// create eventing bucket conn obj
-	cluster, err := couchbase.Connect("http://choco:8091")
-	mf(err, "connect failure")
-
-	pool, err := cluster.GetPool("default")
-	mf(err, "pool")
-
-	bucket, err := pool.GetBucket("eventing")
-	mf(err, "bucket connection")
-
 	timerTick := time.Tick(time.Second)
 
 	var timerWG sync.WaitGroup
@@ -56,9 +46,9 @@ func startTimerProcessing(handle *worker.Worker) {
 				value, flag, cas, err := bucket.GetsRaw(docID)
 
 				if err != nil {
-					fmt.Printf("docid: %s fetch failed with error %#v\n", docID, err.Error())
+					fmt.Fprintf(os.Stderr, "docid: %s fetch failed with error %#v\n", docID, err.Error())
 				} else {
-					fmt.Printf("docid: %#v fetch success. value: %#v cas: `%08x` flag: %#v\n",
+					fmt.Printf("Timer event processing started, docid: %#v value: %#v \n",
 						docID, string(value), cas, flag)
 					handle.SendTimerCallback(string(value))
 

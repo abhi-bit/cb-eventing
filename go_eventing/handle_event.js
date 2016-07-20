@@ -2,20 +2,21 @@ function OnUpdate(doc, meta) {
   log("doc meta id: ", meta.key);
 
   if (meta.type === "json") {
-    log("doc.uuid field: ", doc.uuid);
+    log("doc.ssn field: ", doc.ssn);
 
-    credit_bucket[doc.uuid] = doc;
+    updated_doc = CalculateCreditScore(doc)
+    credit_bucket[meta.key] = updated_doc;
 
-    var value = credit_bucket[doc.uuid];
+    var value = credit_bucket[meta.key];
 
-    delete credit_bucket[doc.uuid];
+    //delete credit_bucket[meta.key];
 
-    var d = new Date();
+    /*var d = new Date();
     var n = ISODateString(d);
     log("ISO 8601: ", n);
 
     registerCallback("CallbackFunc1", meta.key, n);
-    enqueue(order_queue, doc.uuid);
+    enqueue(order_queue, doc.uuid);*/
   }
 }
 
@@ -87,4 +88,19 @@ function OnHTTPPost(req, res) {
 
 function OnTimerEvent() {
 
+}
+
+function CalculateCreditScore(doc) {
+  if (doc.credit_limit_used/doc.total_credit_limit < 0.3) {
+      doc.credit_score = doc.credit_score + 10;
+  } else {
+      doc.credit_score = doc.credit_score -
+                        Math.floor((doc.credit_limit_used/doc.total_credit_limit) * 20);
+  }
+
+  if (doc.missed_emi_payments !== 0) {
+      doc.credit_score = doc.credit_score - doc.missed_emi_payments * 20;
+  }
+
+  return doc;
 }

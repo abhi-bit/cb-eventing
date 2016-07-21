@@ -1,4 +1,4 @@
-var ev = angular.module('event', ['ui.ace', 'createApp']);
+var ev = angular.module('event', ['ui.ace']);
 
 ev.run(['$rootScope', '$http', function($rootScope, $http) {
     $rootScope.applications = [];
@@ -10,23 +10,43 @@ ev.run(['$rootScope', '$http', function($rootScope, $http) {
     });
 }]);
 
-ev.value('resources', resources = [
-    {id:0, name:'Deployment Plan'},
-    {id:1, name:'Static Resources'},
-    {id:2, name:'Handlers'},
-]);
+ev.controller('evController', ['$scope', '$http', function ($scope, $http) {
+    $scope.currentApp = null;
+    $scope.showCreation = true;
+    $scope.showAppDetails = false;
+    $scope.showJsonEditor = false;
+    $scope.showJSEditor = false;
 
-ev.controller('evController', ['$scope', '$http', 'resources',
-    function ($scope, $http, resources) {
-        $scope.currentApp = null;
-        $scope.showCreation = true;
-        $scope.showAppDetails = false;
-        $scope.showJsonEditor = false;
-        $scope.showJSEditor = false;
+resources = [
+{id:0, name:'Deployment Plan'},
+{id:1, name:'Static Resources'},
+{id:2, name:'Handlers'},
+];
+    $scope.resources = resources;
 
-        $scope.resources = resources;
+function resetCreateApp() {
+    $scope.currentApp = null;
+    $scope.newApplication = { id : '',
+        name : '',
+deploy : false,
+    };
+}
 
-        function disableShowOptons() {
+function createApplication(application) {
+    if (application.name.length > 0) {
+        application.id = $scope.applications.length;
+        application.deploy = false;
+        application.expand = false;
+        application.depcfg = '{"_comment": "Enter deployment configuration"}';
+        application.handlers = "/* Enter handlers code here */";
+        $scope.applications.push(application);
+    }
+    resetCreateApp()
+}
+
+$scope.createApplication = createApplication;
+
+function disableShowOptons() {
     $scope.showCreation = false;
     $scope.showAppDetails = false;
     $scope.showJSEditor = false;

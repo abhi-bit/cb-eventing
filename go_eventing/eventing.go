@@ -1,14 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/couchbase/cbauth"
@@ -112,9 +115,37 @@ func main() {
 		log.Fatal(http.ListenAndServe("localhost:6064", nil))
 	}()
 
-	// http callbacks for application
-	regexpHandler := &RegexpHandler{}
-	regexpHandler.HandleFunc(regexp.MustCompile("/*"), handleJsRequests)
+	var appServerWG sync.WaitGroup
 
-	log.Fatal(http.ListenAndServe("localhost:6063", regexpHandler))
+	deployData, err := ioutil.ReadFile(DeploymentConfigLocation)
+	if err == nil {
+		var value interface{}
+		err := json.Unmarshal(deployData, &value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to unmarshal deploymnet.json")
+			return
+		}
+		config := value.(map[string]interface{})
+		httpConfigs := config["http"].([]interface{})
+
+		appServerWG.Add(len(httpConfigs))
+
+		for appIndex := 0; appIndex < len(httpConfigs); appIndex++ {
+			httpConfig := httpConfigs[appIndex].(map[string]interface{})
+
+			serverURIRegexp := fmt.Sprintf("%s*", httpConfig["root_uri_path"].(string))
+			serverPortCombo := fmt.Sprintf("localhost:%s", httpConfig["port"].(string))
+
+			go func() {
+				defer appServerWG.Done()
+				regexpHandler := &RegexpHandler{}
+				regexpHandler.HandleFunc(regexp.MustCompile(serverURIRegexp), handleJsRequests)
+
+				log.Printf("Started listening on server_port_combo: %s on endpoint: %s\n",
+					serverPortCombo, serverURIRegexp)
+				log.Fatal(http.ListenAndServe(serverPortCombo, regexpHandler))
+			}()
+		}
+	}
+	appServerWG.Wait()
 }

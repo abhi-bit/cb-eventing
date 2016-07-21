@@ -9,6 +9,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/indexing/secondary/logging"
 )
@@ -43,7 +44,8 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 
 		req := httpRequest{
-			Path: r.URL.Path,
+			// TODO: make it cleaner for http based application request partitioning
+			Path: strings.Split(r.URL.Path, "/")[2],
 			Host: r.URL.Host,
 		}
 		request, err := json.Marshal(req)

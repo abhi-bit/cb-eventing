@@ -1,7 +1,7 @@
 #include "parse_deployment.h"
 
-map<string, map<string, vector<string> > > ParseDeployment() {
-  map<string, map<string, vector<string> > > out;
+deployment_config* ParseDeployment() {
+  deployment_config* config = new deployment_config();
 
   //ifstream ifs("./deployment.json");
   ifstream ifs("/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/deployment.json");
@@ -19,10 +19,11 @@ map<string, map<string, vector<string> > > ParseDeployment() {
   {
       rapidjson::Value& buckets = doc["buckets"];
       rapidjson::Value& queues = doc["queue"];
-      rapidjson::Value& n1ql = doc["n1ql"];
+      rapidjson::Value& eventing = doc["eventing"];
+
       assert(buckets.IsArray());
       assert(queues.IsArray());
-      assert(n1ql.IsArray());
+      assert(eventing.IsObject());
 
       map<string, vector<string> > buckets_info;
       for(rapidjson::SizeType i = 0; i < buckets.Size(); i++) {
@@ -36,7 +37,7 @@ map<string, map<string, vector<string> > > ParseDeployment() {
 
           buckets_info[alias.GetString()] = bucket_info;
       }
-      out["buckets"] = buckets_info;
+      config->component_configs["buckets"] = buckets_info;
 
       map<string, vector<string> > queues_info;
       for(rapidjson::SizeType i = 0; i < queues.Size(); i++) {
@@ -54,20 +55,9 @@ map<string, map<string, vector<string> > > ParseDeployment() {
 
           queues_info[provider.GetString()] = queue_info;
       }
-      out["queue"] = queues_info;
+      config->component_configs["queue"] = queues_info;
 
-
-      map<string, vector<string> > n1qls_info;
-      for(rapidjson::SizeType i = 0; i < n1ql.Size(); i++) {
-          vector<string> n1ql_info;
-
-          rapidjson::Value& n1ql_alias = n1ql[i]["alias"];
-
-          n1ql_info.push_back(n1ql_alias.GetString());
-
-          n1qls_info[n1ql_alias.GetString()] = n1ql_info;
-      }
-      out["n1ql"] = n1qls_info;
+      config->metadata_bucket.assign(eventing["metadata_bucket"].GetString());
   }
-  return out;
+  return config;
 }

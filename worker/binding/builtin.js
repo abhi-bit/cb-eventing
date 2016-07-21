@@ -14,8 +14,7 @@ function n1ql(strings, ...values) {
         }
         query = query.concat(strings[i + 1]);
     }
-    //return query;
-    return n1ql_blr_cluster[query];
+    return _n1ql[query];
 }
 
 function ISODateString(d) {

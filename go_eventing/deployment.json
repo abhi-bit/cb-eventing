@@ -13,7 +13,14 @@
          "alias" : "order_queue"
       }
    ],
-   "n1ql" : [{
-          "alias" : "n1ql_blr_cluster"
-   }]
+   "http": [
+      {
+          "port": "8080",
+          "root_uri_path": "/credit_score/",
+          "secure_port": "18080"
+      }
+  ],
+  "eventing": {
+    "metadata_bucket": "eventing"
+      }
 }

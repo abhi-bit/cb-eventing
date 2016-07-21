@@ -25,7 +25,7 @@ func NewISO8601(t time.Time) time.Time {
 		fixedZone)
 
 	//Delay the timestamp by 10 second to allow callbacks to ge processed
-	date := baseTime.Add(-10 * time.Second)
+	date := baseTime.Add(-2 * time.Second)
 	return time.Time(date)
 }
 
@@ -48,7 +48,7 @@ func startTimerProcessing(handle *worker.Worker) {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "docid: %s fetch failed with error %#v\n", docID, err.Error())
 				} else {
-					fmt.Printf("Timer event processing started, docid: %#v value: %#v \n",
+					fmt.Printf("Timer event processing started, docid: %#v value: %#v cas: %d flag: %d\n",
 						docID, string(value), cas, flag)
 					handle.SendTimerCallback(string(value))
 

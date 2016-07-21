@@ -8,4 +8,9 @@
 
 using namespace std;
 
-map<string, map<string, vector<string> > > ParseDeployment();
+typedef struct deployment_config_s {
+    string metadata_bucket;
+    map<string, map<string, vector<string> > > component_configs;
+} deployment_config;
+
+deployment_config* ParseDeployment();

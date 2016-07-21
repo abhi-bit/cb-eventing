@@ -321,21 +321,21 @@ Worker::Worker(int tindex) {
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 
-  cb_cluster_endpoint.assign("10.142.200.101");
+  cb_cluster_endpoint.assign("donut");
   cb_cluster_bucket.assign("default");
 
  //context->Enter();
 
-  map<string, map<string, vector<string> > > result = ParseDeployment();
-  map<string, map<string, vector<string> > >::iterator it = result.begin();
+  deployment_config* result = ParseDeployment();
+  map<string, map<string, vector<string> > >::iterator it = result->component_configs.begin();
 
-  for (; it != result.end(); it++) {
+  for (; it != result->component_configs.end(); it++) {
 
       if (it->first == "buckets") {
-          map<string, vector<string> >::iterator bucket = result["buckets"].begin();
-          for (; bucket != result["buckets"].end(); bucket++) {
+          map<string, vector<string> >::iterator bucket = result->component_configs["buckets"].begin();
+          for (; bucket != result->component_configs["buckets"].end(); bucket++) {
             string bucket_alias = bucket->first;
-            string bucket_name = result["buckets"][bucket_alias][0];
+            string bucket_name = result->component_configs["buckets"][bucket_alias][0];
             string endpoint(cb_cluster_endpoint);
 
             b = new Bucket(this,
@@ -344,28 +344,19 @@ Worker::Worker(int tindex) {
                            bucket_alias.c_str());
           }
       }
-      if (it->first == "n1ql") {
-          map<string, vector<string> >::iterator n1ql = result["n1ql"].begin();
-          for (; n1ql != result["n1ql"].end(); n1ql++) {
-            string n1ql_alias = n1ql->first;
-            string bucket_name(cb_cluster_bucket);
-            string endpoint(cb_cluster_endpoint);
 
-            cout << "bucket: " << bucket_name << " endpoint: " << endpoint
-                 << " n1ql_alias: " << n1ql_alias << endl;
-            n = new N1QL(this,
-                         bucket_name.c_str(),
-                         endpoint.c_str(),
-                         n1ql_alias.c_str());
-          }
-      }
+      n = new N1QL(this,
+                   cb_cluster_bucket.c_str(),
+                   cb_cluster_endpoint.c_str(),
+                   "_n1ql");
+
       if (it->first == "queue") {
-          map<string, vector<string> >::iterator queue = result["queue"].begin();
-          for (; queue != result["queue"].end(); queue++) {
+          map<string, vector<string> >::iterator queue = result->component_configs["queue"].begin();
+          for (; queue != result->component_configs["queue"].end(); queue++) {
             string provider = queue->first;
-            string endpoint = result["queue"][provider][1];
-            string queue_alias = result["queue"][provider][2];
-            string queue_name = result["queue"][provider][3];
+            string endpoint = result->component_configs["queue"][provider][1];
+            string queue_alias = result->component_configs["queue"][provider][2];
+            string queue_name = result->component_configs["queue"][provider][3];
 
             cout << "provider: " << provider << " queue_name" << queue_name
                  << "endpoint: " << endpoint << " queue_alias: " << queue_alias << endl;
@@ -383,7 +374,8 @@ Worker::Worker(int tindex) {
   // Register a lcb_t handle for storing timer based callbacks in CB
   // TODO: Fix the hardcoding i.e. allow customer to create
   // bucket with any name and it should be picked from config file
-  string connstr = "couchbase://" + cb_cluster_endpoint + "/eventing";
+
+  string connstr = "couchbase://" + cb_cluster_endpoint + "/" + result->metadata_bucket.c_str();
 
   // lcb related setup
   lcb_create_st crst;
@@ -652,9 +644,6 @@ void Worker::SendTimerCallback(const char* k) {
     lcb_get3(cb_instance, &result, &gcmd);
     lcb_sched_leave(cb_instance);
     lcb_wait(cb_instance);
-
-    cout << __FILE__ << " " << __FUNCTION__ << " " << __LINE__
-         << " result.value: " << result.value << endl;
 
     rapidjson::Document doc;
     if (doc.Parse(result.value.c_str()).HasParseError()) {

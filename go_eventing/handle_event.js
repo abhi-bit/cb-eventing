@@ -39,18 +39,18 @@ function OnDelete(msg) {
 function OnHTTPGet(req, res) {
   var bucket = "beer-sample";
 
-  if (req.path === "/get_beer_count") {
+  if (req.path === "get_beer_count") {
 
     var n1qlResult = n1ql("select count(*) from ${bucket}");
     res["beer_sample_count"] = n1qlResult;
 
-  } else if (req.path === "/get_breweries_in_sf") {
+  } else if (req.path === "get_breweries_in_sf") {
 
     var city = "San Francisco";
     var n1qlResult = n1ql("select count(*) from ${bucket} where ${bucket}.city == '${city}'");
     res.breweries_sf_count = n1qlResult;
 
-  } else if (req.path === "/get_brewery_in_cali") {
+  } else if (req.path === "get_brewery_in_cali") {
 
       var state = "California";
       var limit = 10;
@@ -66,14 +66,14 @@ function OnHTTPGet(req, res) {
 function OnHTTPPost(req, res) {
   var bucket = "beer-sample";
 
-  if (req.path === "/get_breweries_by_city") {
+  if (req.path === "get_breweries_by_city") {
 
     var city = req.params.city;
     var n1qlResult = n1ql("select count(*) from ${bucket} where ${bucket}.city == '${city}'");
     res.brewery_count = n1qlResult;
     res.city = city
 
-  } else if (req.path === "/get_breweries_by_state") {
+  } else if (req.path === "get_breweries_by_state") {
 
       var state = req.params.state;
       var n1qlResult = n1ql("select count(*) from ${bucket} where ${bucket}.state == '${state}'");

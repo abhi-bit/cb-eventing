@@ -321,7 +321,7 @@ Worker::Worker(int tindex) {
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 
-  cb_cluster_endpoint.assign("donut");
+  cb_cluster_endpoint.assign("localhost");
   cb_cluster_bucket.assign("default");
 
  //context->Enter();
@@ -377,6 +377,7 @@ Worker::Worker(int tindex) {
 
   string connstr = "couchbase://" + cb_cluster_endpoint + "/" + result->metadata_bucket.c_str();
 
+  delete result;
   // lcb related setup
   lcb_create_st crst;
   memset(&crst, 0, sizeof crst);

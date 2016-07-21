@@ -29,8 +29,6 @@ class HTTPResponse {
     map<string, string> http_response;
 
   private:
-    bool InstallHTTPResponseMaps();
-
     static Local<ObjectTemplate> MakeHTTPResponseMapTemplate(Isolate* isolate);
 
     static void HTTPResponseSet(Local<Name> name, Local<Value> value,

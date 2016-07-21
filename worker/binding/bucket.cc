@@ -171,11 +171,12 @@ void Bucket::BucketGet(Local<Name> name,
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   lcb_wait(*bucket_lcb_obj_ptr);
 
+  cout << "GET call result Key: " << key << " VALUE: " << result.value << endl;
   const string& value = result.value;
   info.GetReturnValue().Set(
-      String::NewFromUtf8(info.GetIsolate(), value.c_str(),
+      v8::JSON::Parse(String::NewFromUtf8(info.GetIsolate(), value.c_str(),
                           NewStringType::kNormal,
-                          static_cast<int>(value.length())).ToLocalChecked());
+                          static_cast<int>(value.length())).ToLocalChecked()));
 }
 
 void Bucket::BucketSet(Local<Name> name, Local<Value> value_obj,
@@ -184,6 +185,8 @@ void Bucket::BucketSet(Local<Name> name, Local<Value> value_obj,
 
   string key = ObjectToString(Local<String>::Cast(name));
   string value = ToString(info.GetIsolate(), value_obj);
+
+  cout << "Set call KEY: " << key << " VALUE: " << value << endl;
 
   lcb_t* bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
   lcb_t* cb_instance = UnwrapWorkerLcbInstance(info.Holder());

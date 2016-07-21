@@ -19,7 +19,7 @@ deployment_config* ParseDeployment() {
   {
       rapidjson::Value& buckets = doc["buckets"];
       rapidjson::Value& queues = doc["queue"];
-      rapidjson::Value& eventing = doc["eventing"];
+      rapidjson::Value& eventing = doc["workspace"];
 
       assert(buckets.IsArray());
       assert(queues.IsArray());

@@ -77,14 +77,27 @@ func main() {
 	quit = make(chan int, 1)
 
 	// create eventing bucket conn obj
-	c, err := couchbase.Connect("http://donut:8091")
+	c, err := couchbase.Connect("http://localhost:8091")
 	mf(err, "connect failure")
 
 	pool, err := c.GetPool("default")
 	mf(err, "pool")
 
 	bucket, err = pool.GetBucket("eventing")
-	mf(err, "bucket connection")
+
+	var sleep time.Duration
+	sleep = 1
+	for err != nil {
+		logging.Infof("Bucket eventing missing, retrying after %d seconds, err: %#v\n",
+			sleep, err)
+		time.Sleep(time.Second * sleep)
+		c, _ = couchbase.Connect("http://localhost:8091")
+		pool, _ = c.GetPool("default")
+		bucket, err = pool.GetBucket("eventing")
+		if sleep < 8 {
+			sleep = sleep * 2
+		}
+	}
 
 	// setup cbauth
 	if options.auth != "" {
@@ -94,8 +107,8 @@ func main() {
 		}
 	}
 
-	for _, bucket := range options.buckets {
-		go startBucket(cluster, bucket, options.kvaddrs)
+	for _, b := range options.buckets {
+		go startBucket(cluster, b, options.kvaddrs)
 	}
 
 	if options.stats > 0 {
@@ -112,7 +125,7 @@ func main() {
 		http.HandleFunc("/get_application/", fetchAppSetup)
 		http.HandleFunc("/set_application/", storeAppSetup)
 
-		log.Fatal(http.ListenAndServe("localhost:6064", nil))
+		log.Fatal(http.ListenAndServe("localhost:6061", nil))
 	}()
 
 	var appServerWG sync.WaitGroup

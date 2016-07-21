@@ -16,11 +16,11 @@
    "http": [
       {
           "port": "8080",
-          "root_uri_path": "/credit_score/",
+          "root_uri_path": "/app_name/",
           "secure_port": "18080"
       }
   ],
-  "eventing": {
+  "workspace": {
     "metadata_bucket": "eventing"
       }
 }

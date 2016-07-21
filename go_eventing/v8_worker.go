@@ -79,13 +79,14 @@ func runWorker() {
 				m := msg[1].(*mc.DcpEvent)
 				if m.Opcode == mcd.DCP_MUTATION {
 
-					logging.Infof("DCP_MUTATION opcode flag %d cas: %d\n", m.Flags, m.Cas)
-
 					// Fetching CAS value from KV to ensure idempotent-ness of callback handlers
 					casValue := fmt.Sprintf("%d", m.Cas)
 					_, err := bucket.GetRaw(casValue)
 
 					if err != nil {
+						logging.Infof("DCP_MUTATION opcode flag %d cas: %d error: %#v\n",
+							m.Flags, m.Cas, err.Error())
+
 						if m.Flags == JSONType {
 
 							meta := eventMeta{Key: string(m.Key),

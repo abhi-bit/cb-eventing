@@ -32,8 +32,6 @@ HTTPResponse::HTTPResponse(Worker* w) {
   context_.Reset(GetIsolate(), context);
 
   Context::Scope context_scope(context);
-
-  InstallHTTPResponseMaps();
 }
 
 HTTPResponse::~HTTPResponse() {
@@ -83,27 +81,6 @@ Local<Object> HTTPResponse::WrapHTTPResponseMap() {
   result->SetInternalField(0, map_ptr);
 
   return handle_scope.Escape(result);
-}
-
-bool HTTPResponse::InstallHTTPResponseMaps() {
-  HandleScope handle_scope(GetIsolate());
-
-  Local<Object> http_response_obj = WrapHTTPResponseMap();
-
-  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
-
-  cout << "Registering handler for http_response as 'res' " << endl;
-  // Set the options object as a property on the global object.
-  context->Global()
-      ->Set(context,
-            String::NewFromUtf8(GetIsolate(),
-                                "res",
-                                NewStringType::kNormal)
-                .ToLocalChecked(),
-            http_response_obj)
-      .FromJust();
-
-  return true;
 }
 
 const char* HTTPResponse::ConvertMapToJson() {

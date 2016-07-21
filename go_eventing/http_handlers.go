@@ -65,7 +65,7 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 		}
 
 		req := httpRequest{
-			Path:   r.URL.Path,
+			Path:   strings.Split(r.URL.Path, "/")[2],
 			Host:   r.URL.Host,
 			Params: urlValues,
 		}

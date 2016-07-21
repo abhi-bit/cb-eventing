@@ -14,8 +14,11 @@ conn_str = "couchbase://" + host + "/" + bucket
 cb = Bucket(conn_str)
 
 for i in xrange(int(doc_count)):
-    ssn = str(randint(1000, 100000))
-    key = prefix + str(ssn)
+    ssn1 = str(randint(100, 999))
+    ssn2 = str(randint(10, 99))
+    ssn3 = str(randint(1000, 9999))
+    ssn = ssn1 + "_" + ssn2 + "_" + ssn3
+    key = prefix + ssn
     credit_score = randint(600, 800)
     credit_card_count = randint(1, 5)
     total_credit_limit = randint(10000, 100000)

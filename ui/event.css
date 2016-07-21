@@ -1,16 +1,22 @@
 .top {
 position:absolute;
 left:0; right:0;
-height: 92px;
-background: #F2F2F2;
-color: red;
+height: 300px;
+width: 1500px;
+background: #F0EEE7;
+}
+
+#img {
+    width:1500px;
+    height:100px;
+    max-width: 100%;
 }
 
 .left {
 position:absolute;
 left:0; top:92px; bottom: 0;
 width: 178px;
-background: #D5DBD8;
+background: #F0EEE7;
 }
 
 .main {

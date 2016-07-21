@@ -4,8 +4,8 @@
         <link rel="stylesheet" type="text/css" href="event.css">
     </head>
     <body ng-controller="evController">
-        <div class="top">
-            <h1><center> Couchbase Integrated Application Development </center></h2>
+        <div>
+            <img src="cbheader.png" id="img">
         </div>
         <div class="left">
             <a href="#" ng-click="setCreation()"><h2> Applications </h2></a>
@@ -40,15 +40,16 @@
             <div ng-show="showAppDetails">
                 <button align="left" ng-show="!showCreation">Save to disk</button>
             </div>
-            <div ng-show="showJsonEditor" ng-model="currentApp.depcfg" ui-ace="{mode: 'json', theme:'monokai', useWrapMode:true,}">
+            <div ng-show="showJsonEditor" ng-model="currentApp.depcfg" ui-ace="{mode: 'json', useWrapMode:true,}">
             </div>
-            <div ng-show="showJSEditor" ng-model="currentApp.handlers" ui-ace="{mode: 'javascript', theme:'monokai', useWrapMode:true,}">
+            <div ng-show="showJSEditor" ng-model="currentApp.handlers" ui-ace="{mode: 'javascript', useWrapMode:true,}">
             </div>
             <br><br>
         </div>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.3/angular.js"></script>
         <script src="https://cdn.rawgit.com/ajaxorg/ace-builds/v1.2.3/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
         <script src="https://cdn.rawgit.com/angular-ui/ui-ace/v0.2.3/ui-ace.min.js" type="text/javascript" charset="utf-8"></script>
+	    <script src="event_createApp.js" type="text/javascript" charset="utf8"></script>
 	    <script src="event.js" type="text/javascript" charset="utf8"></script>
     </body>
 </html>

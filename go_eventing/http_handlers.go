@@ -1,28 +1,14 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"strconv"
 	"strings"
 
 	"github.com/couchbase/indexing/secondary/logging"
-)
-
-const (
-	DeploymentConfigLocation = "/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/deployment.json"
-	AppHandlerLocation       = "/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/handle_event.js"
-	AppMetaDataLocation      = "/var/tmp/metadata.json"
-	IDDataLocation           = "/var/tmp/id"
-	DeploymentStatusLocation = "/var/tmp/deploystatus"
-	ExpandLocation           = "/var/tmp/expand"
-	AppNameLocation          = "/var/tmp/appname"
-	EventHandlerLocation     = "/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/handle_event.js"
 )
 
 type httpRequest struct {
@@ -48,11 +34,13 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 			Path: strings.Split(r.URL.Path, "/")[2],
 			Host: r.URL.Host,
 		}
+
+		referrer := r.Referer()
 		request, err := json.Marshal(req)
 		if err != nil {
 			logging.Infof("json marshalling of http request failed")
 		}
-		res := handle.SendHTTPGet(string(request))
+		res := workerHTTPReferrerTable[referrer].SendHTTPGet(string(request))
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, "%s\n", res)
 
@@ -69,11 +57,12 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 			Host:   r.URL.Host,
 			Params: urlValues,
 		}
+		referrer := r.Referer()
 		request, err := json.Marshal(req)
 		if err != nil {
 			logging.Infof("json marshalling of http request failed")
 		}
-		res := handle.SendHTTPPost(string(request))
+		res := workerHTTPReferrerTable[referrer].SendHTTPPost(string(request))
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, "%s\n", res)
 	}
@@ -81,53 +70,38 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 
 func fetchAppSetup(w http.ResponseWriter, r *http.Request) {
 
-	name, _ := ioutil.ReadFile(AppNameLocation)
-	id, _ := ioutil.ReadFile(IDDataLocation)
-	ds, _ := ioutil.ReadFile(DeploymentStatusLocation)
-	exp, _ := ioutil.ReadFile(ExpandLocation)
-	depCfg, _ := ioutil.ReadFile(DeploymentConfigLocation)
-	appHan, _ := ioutil.ReadFile(AppHandlerLocation)
-
-	appID, _ := binary.Uvarint(id)
-	deployStatus, _ := strconv.ParseBool(string(ds))
-	expand, _ := strconv.ParseBool(string(exp))
-
-	appConfig := application{
-		Name:             string(name),
-		ID:               appID - 48,
-		DeploymentStatus: deployStatus,
-		Expand:           expand,
-		DeploymentConfig: string(depCfg),
-		AppHandlers:      string(appHan),
+	files, _ := ioutil.ReadDir("./apps/")
+	respData := make([]application, len(files))
+	for index, file := range files {
+		data, _ := ioutil.ReadFile("./apps/" + file.Name())
+		var app application
+		json.Unmarshal(data, &app)
+		respData[index] = app
 	}
 
-	data, _ := json.Marshal(appConfig)
+	data, _ := json.Marshal(respData)
 	fmt.Fprintf(w, "%s\n", data)
 }
 
 func storeAppSetup(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
 	content, _ := ioutil.ReadAll(r.Body)
-	var app application
-	err := json.Unmarshal(content, &app)
-	if err != nil {
-		log.Println("Failed to decode application config", err)
+	appName := values["name"][0]
+
+	ioutil.WriteFile("./apps/"+appName, []byte(content), 0644)
+
+	if handle, ok := workerTable[appName]; ok {
+		logging.Infof("Sending %s workerTable dump: %#v\n", appName, workerTable)
+		// Sending control message to reload update application handlers
+		logging.Infof("Going to send message to quit channel")
+		handle.Quit <- appName
+		logging.Infof("Sent message to quit channel")
+	} else {
+		handle := loadApp(appName)
+		go handleWorker(handle)
+		workerWG.Add(1)
+		logging.Infof("Sending message to setup http handlers for app: %s", appName)
+		appSetup <- appName
 	}
-
-	id := fmt.Sprintf("%d", app.ID)
-
-	ioutil.WriteFile(IDDataLocation, []byte(id), 0644)
-	ioutil.WriteFile(DeploymentStatusLocation,
-		[]byte(strconv.FormatBool(app.DeploymentStatus)), 0644)
-	ioutil.WriteFile(ExpandLocation,
-		[]byte(strconv.FormatBool(app.Expand)), 0644)
-
-	ioutil.WriteFile(DeploymentConfigLocation, []byte(app.DeploymentConfig), 0644)
-	ioutil.WriteFile(AppHandlerLocation, []byte(app.AppHandlers), 0644)
-	ioutil.WriteFile(AppNameLocation, []byte(app.Name), 0644)
-
-	// Sending control message to reload update application handlers
-	logging.Infof("Going to send message to quit channel")
-	quit <- 0
-	logging.Infof("Sent message to quit channel")
 	fmt.Fprintf(w, "Stored application config to disk\n")
 }

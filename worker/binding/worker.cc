@@ -169,6 +169,7 @@ void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
   LCB_CMD_SET_KEY(&scmd, doc_id.c_str(), doc_id.length());
   LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
   scmd.operation = LCB_SET;
+  scmd.flags = 0x2000000;
 
   lcb_sched_enter(*bucket_cb_handle);
   lcb_store3(*bucket_cb_handle, NULL, &scmd);
@@ -321,7 +322,7 @@ Worker::Worker(int tindex) {
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 
-  cb_cluster_endpoint.assign("localhost");
+  cb_cluster_endpoint.assign("10.142.200.101");
   cb_cluster_bucket.assign("default");
 
  //context->Enter();

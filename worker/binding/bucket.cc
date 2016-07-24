@@ -196,6 +196,7 @@ void Bucket::BucketSet(Local<Name> name, Local<Value> value_obj,
   LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
   LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
   scmd.operation = LCB_SET;
+  scmd.flags = 0x2000000;
 
   lcb_sched_enter(*bucket_lcb_obj_ptr);
   lcb_store3(*bucket_lcb_obj_ptr, &result, &scmd);

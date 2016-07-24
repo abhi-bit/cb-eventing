@@ -1,15 +1,17 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"strings"
 	"sync"
 	"time"
 
 	worker "github.com/abhi-bit/eventing/worker"
+	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/jehiah/go-strftime"
 )
 
+var timerEventWorkerChannel chan *worker.Worker
+var timerWG sync.WaitGroup
 var fixedZone = time.FixedZone("", 0)
 
 // NewISO8601 function
@@ -29,32 +31,45 @@ func NewISO8601(t time.Time) time.Time {
 	return time.Time(date)
 }
 
-func startTimerProcessing(handle *worker.Worker) {
+func processTimerEvent(handle *worker.Worker) {
 	timerTick := time.Tick(time.Second)
+	defer timerWG.Done()
+	for {
+		select {
+		case <-timerTick:
+			t := NewISO8601(time.Now().UTC())
 
-	var timerWG sync.WaitGroup
-	timerWG.Add(1)
+			docID := strftime.Format("%Y-%m-%dT%H:%M:%S", t)
+			value, flag, cas, err := bucket.GetsRaw(docID)
 
-	go func() {
-		defer timerWG.Done()
-		for {
-			select {
-			case <-timerTick:
-				t := NewISO8601(time.Now().UTC())
+			if err != nil {
+				logging.Tracef("docid: %s fetch failed with error %#v", docID, err.Error())
+			} else {
+				logging.Infof("Timer event processing started, docid: %#v value: %#v cas: %d flag: %d bucket handle: %s\n",
+					docID, string(value), cas, flag,
+					workerHTTPReferrerTableBackIndex[handle])
+				handle.SendTimerCallback(string(value))
 
-				docID := strftime.Format("%Y-%m-%dT%H:%M:%S", t)
-				value, flag, cas, err := bucket.GetsRaw(docID)
-
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "docid: %s fetch failed with error %#v\n", docID, err.Error())
-				} else {
-					fmt.Printf("Timer event processing started, docid: %#v value: %#v cas: %d flag: %d\n",
-						docID, string(value), cas, flag)
-					handle.SendTimerCallback(string(value))
-
+				// Purge all timer event and docid once they are processed
+				bucket.Delete(docID)
+				keys := strings.Split(string(value), ";")
+				for index := range keys {
+					bucket.Delete(keys[index])
 				}
 			}
 		}
-	}()
+	}
+
+}
+
+func startTimerProcessing() {
+	for {
+		select {
+		case handle := <-timerEventWorkerChannel:
+			go processTimerEvent(handle)
+			timerWG.Add(1)
+
+		}
+	}
 	timerWG.Wait()
 }

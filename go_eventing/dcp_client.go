@@ -51,7 +51,6 @@ func startBucket(cluster, bucketn string, kvaddrs []string) int {
 		}
 	}
 	logging.Infof("Connected with %q\n", bucketn)
-	//mf(err, "bucket")
 
 	dcpConfig := map[string]interface{}{
 		"genChanSize":    10000,
@@ -62,6 +61,7 @@ func startBucket(cluster, bucketn string, kvaddrs []string) int {
 	dcpFeed, err := b.StartDcpFeedOver(
 		couchbase.NewDcpFeedName("rawupr"),
 		uint32(0), options.kvaddrs, 0xABCD, dcpConfig)
+
 	sleep = 1
 	for err != nil {
 		logging.Infof("Unable to open DCP Feed, retrying after %d seconds\n", sleep)

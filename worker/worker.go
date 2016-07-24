@@ -37,6 +37,7 @@ type worker struct {
 type Worker struct {
 	*worker
 	disposed bool
+	Quit     chan string
 }
 
 // Version - Returns the V8 version E.G. "4.3.59"

@@ -20,6 +20,8 @@ import (
 )
 
 var bucket *couchbase.Bucket
+var appSetup chan string
+var appServerWG sync.WaitGroup
 
 func argParse() string {
 	var buckets string
@@ -72,12 +74,52 @@ func usage() {
 	flag.PrintDefaults()
 }
 
+func processApp(appName string) {
+	logging.Infof("Reading config for app: %s \n", appName)
+
+	appData, err := ioutil.ReadFile("./apps/" + appName)
+	if err == nil {
+		var app application
+		err := json.Unmarshal(appData, &app)
+		if err != nil {
+			logging.Infof("Failed parse application data for app: %s\n", appName)
+		}
+		var value interface{}
+		err = json.Unmarshal([]byte(app.DeploymentConfig), &value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to unmarshal deployment.json")
+			return
+		}
+
+		config := value.(map[string]interface{})
+		httpConfigs := config["http"].([]interface{})
+
+		appServerWG.Add(len(httpConfigs))
+
+		for appIndex := 0; appIndex < len(httpConfigs); appIndex++ {
+			httpConfig := httpConfigs[appIndex].(map[string]interface{})
+
+			serverURIRegexp := fmt.Sprintf("%s*", httpConfig["root_uri_path"].(string))
+			serverPortCombo := fmt.Sprintf("localhost:%s", httpConfig["port"].(string))
+
+			go func() {
+				defer appServerWG.Done()
+				regexpHandler := &RegexpHandler{}
+				regexpHandler.HandleFunc(regexp.MustCompile(serverURIRegexp), handleJsRequests)
+
+				log.Printf("Started listening on server_port_combo: %s on endpoint: %s\n",
+					serverPortCombo, serverURIRegexp)
+				log.Fatal(http.ListenAndServe(serverPortCombo, regexpHandler))
+			}()
+		}
+	}
+}
+
 func main() {
 	cluster := argParse()
-	quit = make(chan int, 1)
 
-	// create eventing bucket conn obj
-	c, err := couchbase.Connect("http://localhost:8091")
+	connStr := "http://10.142.200.101:8091"
+	c, err := couchbase.Connect(connStr)
 	mf(err, "connect failure")
 
 	pool, err := c.GetPool("default")
@@ -91,7 +133,7 @@ func main() {
 		logging.Infof("Bucket eventing missing, retrying after %d seconds, err: %#v\n",
 			sleep, err)
 		time.Sleep(time.Second * sleep)
-		c, _ = couchbase.Connect("http://localhost:8091")
+		c, _ = couchbase.Connect(connStr)
 		pool, _ = c.GetPool("default")
 		bucket, err = pool.GetBucket("eventing")
 		if sleep < 8 {
@@ -120,7 +162,7 @@ func main() {
 	}()
 
 	go func() {
-		fs := http.FileServer(http.Dir("/var/tmp/ciad"))
+		fs := http.FileServer(http.Dir("../ui"))
 		http.Handle("/", fs)
 		http.HandleFunc("/get_application/", fetchAppSetup)
 		http.HandleFunc("/set_application/", storeAppSetup)
@@ -128,36 +170,22 @@ func main() {
 		log.Fatal(http.ListenAndServe("localhost:6061", nil))
 	}()
 
-	var appServerWG sync.WaitGroup
+	files, err := ioutil.ReadDir("./apps/")
+	if err != nil {
+		logging.Infof("Failed to read application directory, is it missing?\n")
+		os.Exit(1)
+	}
 
-	deployData, err := ioutil.ReadFile(DeploymentConfigLocation)
-	if err == nil {
-		var value interface{}
-		err := json.Unmarshal(deployData, &value)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to unmarshal deploymnet.json")
-			return
-		}
-		config := value.(map[string]interface{})
-		httpConfigs := config["http"].([]interface{})
+	appSetup = make(chan string, 100)
+	for _, file := range files {
+		appSetup <- file.Name()
+	}
 
-		appServerWG.Add(len(httpConfigs))
-
-		for appIndex := 0; appIndex < len(httpConfigs); appIndex++ {
-			httpConfig := httpConfigs[appIndex].(map[string]interface{})
-
-			serverURIRegexp := fmt.Sprintf("%s*", httpConfig["root_uri_path"].(string))
-			serverPortCombo := fmt.Sprintf("localhost:%s", httpConfig["port"].(string))
-
-			go func() {
-				defer appServerWG.Done()
-				regexpHandler := &RegexpHandler{}
-				regexpHandler.HandleFunc(regexp.MustCompile(serverURIRegexp), handleJsRequests)
-
-				log.Printf("Started listening on server_port_combo: %s on endpoint: %s\n",
-					serverPortCombo, serverURIRegexp)
-				log.Fatal(http.ListenAndServe(serverPortCombo, regexpHandler))
-			}()
+	for {
+		select {
+		case appName := <-appSetup:
+			go processApp(appName)
+			logging.Infof("Got message to load app: %s", appName)
 		}
 	}
 	appServerWG.Wait()

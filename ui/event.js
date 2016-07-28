@@ -1,116 +1,144 @@
-var ev = angular.module('event', ['ui.ace']);
+(function() {
+    var ev = angular.module('event', ['ui.ace', 'ui.router']);
+    var applications = [];
+    var resources = [
+        {id:0, name:'Deployment Plan'},
+        {id:1, name:'Static Resources'},
+        {id:2, name:'Handlers'},
+    ];
 
-ev.run(['$rootScope', '$http', function($rootScope, $http) {
-    $rootScope.applications = [];
-    $http.get('http://localhost:6061/get_application')
-    .then(function(response) {
-        for(var i = 0; i < response.data.length; i++) {
-            $rootScope.applications.push(response.data[i]);
+    ev.config(['$stateProvider', '$urlRouterProvider', function($stateProvider, $urlRouterProvider) {
+        $urlRouterProvider.otherwise('/');
+        $stateProvider
+        .state('applications', {
+            url: '/',
+            templateUrl: 'templates/createApp-frag.html',
+            controller: 'CreateController',
+            controllerAs: 'createCtrl'
+        })
+        .state('appName', {
+            url: '/:appName',
+            templateUrl: 'templates/applications-frag.html',
+            controller: 'PerAppController',
+            controllerAs: 'perAppCtrl',
+        })
+        .state('resName', {
+            url: '/:appName/:resName',
+            templateUrl: 'templates/editor-frag.html',
+            controller: 'ResEditorController',
+            controllerAs: 'resEditCtrl',
+        });
+
+    }]);
+
+    ev.run(['$http', function($http) {
+        $http.get('http://localhost:6061/get_application')
+        .then(function(response) {
+            for(var i = 0; i < response.data.length; i++) {
+                applications.push(response.data[i]);
+            }
+        });
+    }]);
+
+    ev.directive('appHeader', function(){
+        return {
+            restrict: 'E',
+            templateUrl: 'templates/header-frag.html',
+        };
+    });
+
+    ev.directive('appListsLeftPanel', function(){
+        return {
+            restrict: 'E',
+            templateUrl: 'templates/applist-frag.html',
+            controller: 'AppListController',
+            controllerAs: 'appListCtrl',
+        };
+    });
+
+
+    ev.controller('CreateController',[function() {
+        this.showCreation = true;
+        this.applications = applications;
+        this.createApplication = function(application) {
+            if (application.name.length > 0) {
+                application.id = this.applications.length;
+                application.deploy = false;
+                application.expand = false;
+                application.depcfg = '{"_comment": "Enter deployment configuration"}';
+                application.handlers = "/* Enter handlers code here */";
+                this.applications.push(application);
+            }
+            this.newApplication={};
         }
-    });
-}]);
+    }]);
 
-ev.controller('evController', ['$scope', '$http', function ($scope, $http) {
-    $scope.currentApp = null;
-    $scope.showCreation = true;
-    $scope.showAppDetails = false;
-    $scope.showJsonEditor = false;
-    $scope.showJSEditor = false;
+    ev.controller('AppListController', [function() {
+        this.resources = resources;
+        this.applications = applications;
+        this.currentApp = null;
+        this.setCurrentApp = function (application) {
+            application.expand = !application.expand;
+            this.currentApp = application;
+        }
+        this.isCurrentApp = function(application) {
+            var flag = this.currentApp !== null && application.name === this.currentApp.name;
+            if (!flag) application.expand = false;
+            return flag;
+        }
+    }]);
 
-resources = [
-{id:0, name:'Deployment Plan'},
-{id:1, name:'Static Resources'},
-{id:2, name:'Handlers'},
-];
-    $scope.resources = resources;
+    ev.controller('PerAppController', ['$location', '$http', function($location, $http) {
+        this.currentApp = null;
+        var appName = $location.path().slice(1);
+        for(var i = 0; i < applications.length; i++) {
+            if(applications[i].name === appName) {
+                this.currentApp = applications[i];
+                break;
+            }
+        }
 
-function resetCreateApp() {
-    $scope.currentApp = null;
-    $scope.newApplication = { id : '',
-        name : '',
-deploy : false,
-    };
-}
+        this.deployApplication = function() {
+            this.currentApp.deploy = true;
+            this.currentApp.depcfg = JSON.parse(this.currentApp.depcfg);
+            var uri = 'http://localhost:6061/set_application/?name=' + this.currentApp.name;
+            var res = $http.post(uri, this.currentApp);
+            res.success(function(data, status, headers, config) {
+                this.set_application = data;
+            });
+            res.error(function(data, status, headers, config) {
+                alert( "failure message: " + JSON.stringify({data: data}));
+            });
+        }
 
-function createApplication(application) {
-    if (application.name.length > 0) {
-        application.id = $scope.applications.length;
-        application.deploy = false;
-        application.expand = false;
-        application.depcfg = '{"_comment": "Enter deployment configuration"}';
-        application.handlers = "/* Enter handlers code here */";
-        $scope.applications.push(application);
-    }
-    resetCreateApp()
-}
+        this.undeployApplication = function() {
+            this.currentApp.deploy = false;
+        }
 
-$scope.createApplication = createApplication;
+    }]);
 
-function disableShowOptons() {
-    $scope.showCreation = false;
-    $scope.showAppDetails = false;
-    $scope.showJSEditor = false;
-    $scope.showJsonEditor = false;
-}
+    ev.controller('ResEditorController', ['$location', function($location){
+        this.currentApp = null;
+        var values = $location.path().split('/');
+        appName = values[1];
+        for(var i = 0; i < applications.length; i++) {
+            if(applications[i].name === appName) {
+                this.currentApp = applications[i];
+                break;
+            }
+        }
+        if(values[2] == 'Deployment Plan') {
+            this.showJsonEditor = true;
+            this.showJSEditor = false;
+        }
+        else if(values[2] == 'Handlers') {
+            this.showJsonEditor = false;
+            this.showJSEditor = true;
+        }
+        else {
+            this.showJSEditor = false;
+            this.showJsonEditor = false;
+        }
+    }]);
 
-function setCreation() {
-    disableShowOptons();
-    $scope.showCreation = true;
-    $scope.currentApp = null;
-}
-
-$scope.setCreation = setCreation;
-
-function setCurrentApp(application) {
-    disableShowOptons();
-    application.expand = !application.expand;
-    $scope.currentApp = application;
-    $scope.showAppDetails = true;
-}
-$scope.setCurrentApp = setCurrentApp;
-
-function deployApplication() {
-    $scope.currentApp.deploy = true;
-    var uri = 'http://localhost:6061/set_application/?name=' + $scope.currentApp.name;
-    console.log('Setting URI: ', uri);
-    var res = $http.post(uri, $scope.currentApp);
-    res.success(function(data, status, headers, config) {
-        $scope.set_application = data;
-    });
-    res.error(function(data, status, headers, config) {
-        alert( "failure message: " + JSON.stringify({data: data}));
-    });
-}
-$scope.deployApplication = deployApplication;
-
-function undeployApplication() {
-    $scope.currentApp.deploy = false;
-}
-$scope.undeployApplication = undeployApplication;
-
-function isCurrentApp(application) {
-    var flag = $scope.currentApp !== null && application.name === $scope.currentApp.name;
-    if (!flag) application.expand = false;
-    return flag;
-}
-$scope.isCurrentApp = isCurrentApp;
-
-function openEditor(resource) {
-    disableShowOptons();
-    /* Do not edit static resources now */
-    switch (resource.id) {
-        case 0:
-            $scope.showJsonEditor = true;
-            break;
-        case 1:
-            disableShowOptons();
-            break;
-        case 2:
-            $scope.showJSEditor = true;
-            break;
-    }
-}
-$scope.openEditor = openEditor;
-
-}]);
-
+})();

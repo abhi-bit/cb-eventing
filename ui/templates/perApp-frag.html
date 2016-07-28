@@ -1,0 +1,17 @@
+<div class="main">
+    <div ng-show="showAppDetails && !currentApp.deploy">
+        <br><br><br><br>
+        <button align="left" ng-click="deployApplication()">Deploy Application</button>
+    </div>
+    <div ng-show="showAppDetails && currentApp.deploy">
+        <br><br><br><br>
+        <button align="left" ng-click="undeployApplication()">Undeploy Application</button>
+    </div>
+    <div ng-show="showAppDetails">
+        <button align="left" ng-show="!showCreation">Save to disk</button>
+    </div>
+    <div ng-show="showJsonEditor" ng-model="currentApp.depcfg" ui-ace="{mode: 'json', useWrapMode:true,}">
+    </div>
+    <div ng-show="showJSEditor" ng-model="currentApp.handlers" ui-ace="{mode: 'javascript', useWrapMode:true,}">
+    </div>
+</div>

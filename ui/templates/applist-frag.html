@@ -1,0 +1,14 @@
+<div class="left">
+    <a ui-sref="applications"><h2>Applications</h2></a>
+    <table>
+        <tbody ng-repeat="application in appListCtrl.applications">
+            <tr><td>
+                    <a ui-sref="appName({appName:application.name})" ng-click="appListCtrl.setCurrentApp(application)"><h4> {{application.name}} </h4></a>
+            </td></tr>
+            <tr ng-repeat="resource in appListCtrl.resources">
+                <td><a ui-sref="resName({appName:application.name,resName:resource.name})" ng-show="appListCtrl.isCurrentApp(application) && application.expand"> {{resource.name}} </a></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+

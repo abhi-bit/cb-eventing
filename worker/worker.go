@@ -8,9 +8,11 @@ package worker
 import "C"
 import "errors"
 
-import "unsafe"
-import "sync"
-import "runtime"
+import (
+	"runtime"
+	"sync"
+	"unsafe"
+)
 
 type workerTableIndex int
 
@@ -112,7 +114,7 @@ func (w *Worker) Load(sName string, codeString string) error {
 
 // SendDelete sends DCP_DELETION mutation to v8
 func (w *Worker) SendDelete(m string) error {
-	msg := C.CString(string(m))
+	msg := C.CString(m)
 	defer C.free(unsafe.Pointer(msg))
 
 	r := C.worker_send_delete(w.worker.cWorker, msg)
@@ -126,11 +128,11 @@ func (w *Worker) SendDelete(m string) error {
 
 // SendUpdate sends DCP_MUTATION to v8
 func (w *Worker) SendUpdate(v string, m string, t string) error {
-	value := C.CString(string(v))
+	value := C.CString(v)
 	defer C.free(unsafe.Pointer(value))
-	meta := C.CString(string(m))
+	meta := C.CString(m)
 	defer C.free(unsafe.Pointer(meta))
-	docType := C.CString(string(t))
+	docType := C.CString(t)
 	defer C.free(unsafe.Pointer(docType))
 
 	r := C.worker_send_update(w.worker.cWorker, value, meta, docType)
@@ -148,7 +150,7 @@ func (w *Worker) TerminateExecution() {
 
 // SendHTTPGet sends http GET request to JS world
 func (w *Worker) SendHTTPGet(r string) string {
-	req := C.CString(string(r))
+	req := C.CString(r)
 	defer C.free(unsafe.Pointer(req))
 
 	res := C.worker_send_http_get(w.worker.cWorker, req)
@@ -157,7 +159,7 @@ func (w *Worker) SendHTTPGet(r string) string {
 
 // SendHTTPPost sends http POST request to JS world
 func (w *Worker) SendHTTPPost(r string) string {
-	req := C.CString(string(r))
+	req := C.CString(r)
 	defer C.free(unsafe.Pointer(req))
 
 	res := C.worker_send_http_post(w.worker.cWorker, req)
@@ -166,9 +168,90 @@ func (w *Worker) SendHTTPPost(r string) string {
 
 // SendTimerCallback send list of keys against which timed callbacks need to be triggered
 func (w *Worker) SendTimerCallback(k string) {
-	keys := C.CString(string(k))
+	keys := C.CString(k)
 	defer C.free(unsafe.Pointer(keys))
 
 	C.worker_send_timer_callback(w.worker.cWorker, keys)
 	return
+}
+
+// SendContinueRequest function
+func (w *Worker) SendContinueRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_continue_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+// SendEvaluateRequest function
+func (w *Worker) SendEvaluateRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_evaluate_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+// SendLookupRequest function
+func (w *Worker) SendLookupRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_lookup_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+// SendBacktraceRequest function
+func (w *Worker) SendBacktraceRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_backtrace_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+// SendFrameRequest function
+func (w *Worker) SendFrameRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_frame_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+// SendSourceRequest function
+func (w *Worker) SendSourceRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_source_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+// SendSetBreakpointRequest function
+func (w *Worker) SendSetBreakpointRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_setbreakpoint_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+// SendClearBreakpointRequest function
+func (w *Worker) SendClearBreakpointRequest(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_clearbreakpoint_request(w.worker.cWorker, request)
+	return C.GoString(res)
+}
+
+//SendListBreakpoints function
+func (w *Worker) SendListBreakpoints(r string) string {
+	request := C.CString(r)
+	defer C.free(unsafe.Pointer(request))
+
+	res := C.worker_send_listbreakpoints_request(w.worker.cWorker, request)
+	return C.GoString(res)
 }

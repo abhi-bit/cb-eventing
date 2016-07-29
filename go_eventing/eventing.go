@@ -84,14 +84,8 @@ func processApp(appName string) {
 		if err != nil {
 			logging.Infof("Failed parse application data for app: %s\n", appName)
 		}
-		var value interface{}
-		err = json.Unmarshal([]byte(app.DeploymentConfig), &value)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to unmarshal deployment.json")
-			return
-		}
 
-		config := value.(map[string]interface{})
+		config := app.DeploymentConfig.(map[string]interface{})
 		httpConfigs := config["http"].([]interface{})
 
 		appServerWG.Add(len(httpConfigs))
@@ -118,7 +112,7 @@ func processApp(appName string) {
 func main() {
 	cluster := argParse()
 
-	connStr := "http://10.142.200.101:8091"
+	connStr := "http://donut:8091"
 	c, err := couchbase.Connect(connStr)
 	mf(err, "connect failure")
 
@@ -166,6 +160,7 @@ func main() {
 		http.Handle("/", fs)
 		http.HandleFunc("/get_application/", fetchAppSetup)
 		http.HandleFunc("/set_application/", storeAppSetup)
+		http.HandleFunc("/debug", v8DebugHandler)
 
 		log.Fatal(http.ListenAndServe("localhost:6061", nil))
 	}()

@@ -1,3 +1,4 @@
+
 function n1ql(strings, ...values) {
     var stringsLength = strings.length;
     var query = "";

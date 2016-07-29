@@ -18,12 +18,12 @@ type httpRequest struct {
 }
 
 type application struct {
-	Name             string `json:"name"`
-	ID               uint64 `json:"id"`
-	DeploymentStatus bool   `json:"deploy"`
-	Expand           bool   `json:"expand"`
-	DeploymentConfig string `json:"depcfg"`
-	AppHandlers      string `json:"handlers"`
+	Name             string      `json:"name"`
+	ID               uint64      `json:"id"`
+	DeploymentStatus bool        `json:"deploy"`
+	Expand           bool        `json:"expand"`
+	DeploymentConfig interface{} `json:"depcfg"`
+	AppHandlers      string      `json:"handlers"`
 }
 
 func handleJsRequests(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +35,7 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 			Host: r.URL.Host,
 		}
 
-		referrer := r.Referer()
+		referrer := r.Host
 		request, err := json.Marshal(req)
 		if err != nil {
 			logging.Infof("json marshalling of http request failed")
@@ -57,7 +57,7 @@ func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 			Host:   r.URL.Host,
 			Params: urlValues,
 		}
-		referrer := r.Referer()
+		referrer := r.Host
 		request, err := json.Marshal(req)
 		if err != nil {
 			logging.Infof("json marshalling of http request failed")
@@ -104,4 +104,40 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 		appSetup <- appName
 	}
 	fmt.Fprintf(w, "Stored application config to disk\n")
+}
+
+func v8DebugHandler(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	command := values["command"][0]
+	appName := values["appname"][0]
+
+	if handle, ok := workerTable[appName]; ok {
+		payload := make([]byte, r.ContentLength)
+		r.Body.Read(payload)
+		var response string
+		switch command {
+		case "continue":
+			response = handle.SendContinueRequest(string(payload))
+		case "evaluate":
+			response = handle.SendEvaluateRequest(string(payload))
+		case "lookup":
+			response = handle.SendLookupRequest(string(payload))
+		case "backtrace":
+			response = handle.SendBacktraceRequest(string(payload))
+		case "frame":
+			response = handle.SendFrameRequest(string(payload))
+		case "source":
+			response = handle.SendSourceRequest(string(payload))
+		case "setbreakpoint":
+			response = handle.SendSetBreakpointRequest(string(payload))
+		case "clearbreakpoint":
+			response = handle.SendClearBreakpointRequest(string(payload))
+		case "listbreakpoints":
+			response = handle.SendListBreakpoints(string(payload))
+		}
+		fmt.Fprintf(w, "%s", response)
+	} else {
+		fmt.Fprintf(w, "Application missing")
+		return
+	}
 }

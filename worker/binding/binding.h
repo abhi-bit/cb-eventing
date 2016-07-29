@@ -28,6 +28,16 @@ const char* worker_send_http_post(worker* w, const char* http_req);
 
 void worker_send_timer_callback(worker* w, const char* keys);
 
+const char* worker_send_continue_request(worker* w, const char* request);
+const char* worker_send_evaluate_request(worker* w, const char* request);
+const char* worker_send_lookup_request(worker* w, const char* request);
+const char* worker_send_backtrace_request(worker* w, const char* request);
+const char* worker_send_frame_request(worker* w, const char* request);
+const char* worker_send_source_request(worker* w, const char* request);
+const char* worker_send_setbreakpoint_request(worker* w, const char* request);
+const char* worker_send_clearbreakpoint_request(worker* w, const char* request);
+const char* worker_send_listbreakpoints_request(worker* w, const char* request);
+
 void worker_dispose(worker* w);
 void worker_terminate_execution(worker* w);
 

@@ -3,8 +3,7 @@
 deployment_config* ParseDeployment() {
   deployment_config* config = new deployment_config();
 
-  //ifstream ifs("./deployment.json");
-  ifstream ifs("/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/go_eventing/deployment.json");
+  ifstream ifs("./deployment.json");
   string content((istreambuf_iterator<char>(ifs)),
                   (istreambuf_iterator<char>()));
 

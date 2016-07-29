@@ -2,6 +2,7 @@
 #include <cstring>
 #include <regex>
 #include <sstream>
+#include <typeinfo>
 
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
@@ -17,8 +18,170 @@ using namespace v8;
 
 string cb_cluster_endpoint;
 string cb_cluster_bucket;
+string continue_result;
+string evaluate_result;
+string set_breakpoint_result;
+string clear_breakpoint_result;
 
-//extern "C" {
+// Copies a C string to a 16-bit string.  Does not check for buffer overflow.
+// Does not use the V8 engine to convert strings, so it can be used
+// in any thread.  Returns the length of the string.
+int AsciiToUtf16(const char* input_buffer, uint16_t* output_buffer) {
+  int i;
+  for (i = 0; input_buffer[i] != '\0'; ++i) {
+    // ASCII does not use chars > 127, but be careful anyway.
+    output_buffer[i] = static_cast<unsigned char>(input_buffer[i]);
+  }
+  output_buffer[i] = 0;
+  return i;
+}
+
+bool GetEvaluateResult(char* message, string &buffer) {
+  if (strstr(message, "\"command\":\"evaluate\"") == NULL) {
+    return false;
+  }
+  if (strstr(message, "\"text\":\"") == NULL) {
+    return false;
+  }
+  cout << __FUNCTION__ << " Message dump: " << message << endl;
+
+  string msg(message);
+  rapidjson::Document doc;
+  if (doc.Parse(msg.c_str()).HasParseError()) {
+      cerr << "Failed to parse v8 debug JSON response" << endl;
+  }
+
+  assert(doc.IsObject());
+  string result;
+  {
+      rapidjson::Value& value = doc["body"]["text"];
+      result.assign(value.GetString());
+  }
+  buffer.assign(result);
+  return true;
+}
+
+static void DebugEvaluateHandler(const v8::Debug::Message& message) {
+  v8::Local<v8::String> json = message.GetJSON();
+  v8::String::Utf8Value utf8(json);
+
+  GetEvaluateResult(*utf8, evaluate_result);
+}
+
+bool SetBreakpointResult(char* message) {
+  if (strstr(message, "\"command\":\"setbreakpoint\"") == NULL) {
+    return false;
+  }
+  if (strstr(message, "\"type\":\"") == NULL) {
+    return false;
+  }
+  cout << __FUNCTION__ << " Message dump: " << message << endl;
+
+  string msg(message);
+  rapidjson::Document doc;
+  if (doc.Parse(msg.c_str()).HasParseError()) {
+      cerr << "Failed to parse v8 debug JSON response" << endl;
+  }
+
+  assert(doc.IsObject());
+  {
+      rapidjson::Value& line = doc["body"]["line"];
+      rapidjson::Value& column = doc["body"]["column"];
+      char buf[10];
+      // TODO: more error checking or using a safe wrapper on top of
+      // standard sprintf
+      sprintf(buf, "%d:%d", line.GetInt(), column.GetInt());
+      set_breakpoint_result.assign(buf);
+  }
+  return true;
+}
+
+static void DebugSetBreakpointHandler(const v8::Debug::Message& message) {
+  v8::Local<v8::String> json = message.GetJSON();
+  v8::String::Utf8Value utf8(json);
+
+  SetBreakpointResult(*utf8);
+}
+
+void ContinueResult(char* message) {
+  if (strstr(message, "\"command\":\"continue\"") == NULL) {
+    return;
+  }
+  cout << __FUNCTION__ << " Message dump: " << message << endl;
+
+  cout << __FUNCTION__ << __LINE__ << endl;
+  string msg(message);
+  rapidjson::Document doc;
+  if (doc.Parse(msg.c_str()).HasParseError()) {
+      cerr << "Failed to parse v8 debug JSON response" << endl;
+  }
+
+  cout << __FUNCTION__ << __LINE__ << endl;
+  assert(doc.IsObject());
+  {
+      rapidjson::Value& request_seq = doc["request_seq"];
+      char buf[20];
+      // TODO: more error checking or using a safe wrapper on top of
+      // standard sprintf
+      sprintf(buf, "request_seq: %d", request_seq.GetInt());
+      cout << __FUNCTION__ << __LINE__ << endl;
+      continue_result.assign(buf);
+  }
+  cout << __FUNCTION__ << __LINE__ << " " << continue_result << endl;
+}
+
+static void DebugContinueHandler(const v8::Debug::Message& message) {
+  v8::Local<v8::String> json = message.GetJSON();
+  v8::String::Utf8Value utf8(json);
+
+  ContinueResult(*utf8);
+  cout << __FUNCTION__ << __LINE__ << endl;
+}
+
+void ClearBreakpointResult(char* message) {
+  if (strstr(message, "\"command\":\"clearbreakpoint\"") == NULL) {
+    return;
+  }
+  cout << __FUNCTION__ << " Message dump: " << message << endl;
+  if (strstr(message, "\"message\":\"Error\"") == NULL) {
+    // Sample error message
+    /* {"seq":1,
+     * "request_seq":239,
+     * "type":"response",
+     * "command":"clearbreakpoint",
+     * "success":false,
+     * "message":"Error: Debugger: Invalid breakpoint",
+     * "running":true}*/
+    return;
+  }
+
+  string msg(message);
+  rapidjson::Document doc;
+  if (doc.Parse(msg.c_str()).HasParseError()) {
+      cerr << "Failed to parse v8 debug JSON response" << endl;
+  }
+
+  assert(doc.IsObject());
+  {
+      rapidjson::Value& type = doc["body"]["type"];
+      rapidjson::Value& breakpoints_cleared = doc["body"]["breakpoint"];
+      char buf[40];
+      // TODO: more error checking or using a safe wrapper on top of
+      // standard sprintf
+      sprintf(buf, "type:%s breakpoints_cleared: %d",
+              type.GetString(), breakpoints_cleared.GetInt());
+      clear_breakpoint_result.assign(buf);
+  }
+  return;
+}
+
+static void DebugClearBreakpointHandler(const v8::Debug::Message& message) {
+  v8::Local<v8::String> json = message.GetJSON();
+  v8::String::Utf8Value utf8(json);
+
+  ClearBreakpointResult(*utf8);
+}
+
 
 static void op_get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     const lcb_RESPGET *resp = reinterpret_cast<const lcb_RESPGET*>(rb);
@@ -81,6 +244,12 @@ lcb_t* UnwrapWorkerLcbInstance(Local<Object> obj) {
     Local<External> field = Local<External>::Cast(obj->GetInternalField(2));
     void *ptr = field->Value();
     return static_cast<lcb_t*>(ptr);
+}
+
+Worker* UnwrapWorkerInstance(Local<Object> obj) {
+    Local<External> field = Local<External>::Cast(obj->GetInternalField(1));
+    void* ptr = field->Value();
+    return static_cast<Worker*>(ptr);
 }
 
 map<string, string>* UnwrapMap(Local<Object> obj) {
@@ -322,7 +491,7 @@ Worker::Worker(int tindex) {
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 
-  cb_cluster_endpoint.assign("10.142.200.101");
+  cb_cluster_endpoint.assign("donut");
   cb_cluster_bucket.assign("default");
 
  //context->Enter();
@@ -402,8 +571,7 @@ Worker::~Worker() {
 }
 
 void LoadBuiltins(string* out) {
-    //ifstream ifs("../worker/binding/builtin.js");
-    ifstream ifs("/Users/asingh/repo/go/src/github.com/abhi-bit/eventing/worker/binding/builtin.js");
+    ifstream ifs("../worker/binding/builtin.js");
     string content((istreambuf_iterator<char> (ifs)),
                    (istreambuf_iterator<char>()));
     out->assign(content);
@@ -421,49 +589,50 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   TryCatch try_catch;
 
   string temp, script_to_execute;
-  string content;
-  LoadBuiltins(&content);
+  string content, builtin_functions;
+  LoadBuiltins(&builtin_functions);
 
-  content.append(source_s);
+  content.assign(source_s);
+
+  // Preprocessor for allowing queue operations
+  std::regex enqueue("(enqueue\\((.*)\\, (.*)\\)))");
+  std::smatch queue_m;
+
+  while (std::regex_search(content, queue_m, enqueue)) {
+      temp += queue_m.prefix();
+      temp += queue_m[2].str();
+      temp += "[";
+      temp += queue_m[3].str();
+      temp += "]";
+      content = queue_m.suffix();
+  }
+  temp += content;
 
   // TODO: Figure out if there is a cleaner way to do preprocessing for n1ql
   // Converting n1ql("<query>") to tagged template literal i.e. n1ql`<query>`
   std::regex n1ql_ttl("(n1ql\\(\")(.*)(\"\\))");
   std::smatch n1ql_m;
 
-  while (std::regex_search(content, n1ql_m, n1ql_ttl)) {
-      temp += n1ql_m.prefix();
+  while (std::regex_search(temp, n1ql_m, n1ql_ttl)) {
+      script_to_execute += n1ql_m.prefix();
       std::regex re_prefix("n1ql\\(\"");
       std::regex re_suffix("\"\\)");
-      temp += std::regex_replace(n1ql_m[1].str(),
+      script_to_execute += std::regex_replace(n1ql_m[1].str(),
                                               re_prefix, "n1ql`");
-      temp += n1ql_m[2].str();
-      temp += std::regex_replace(n1ql_m[3].str(),
+      script_to_execute += n1ql_m[2].str();
+      script_to_execute += std::regex_replace(n1ql_m[3].str(),
                                               re_suffix, "`");
-      content = n1ql_m.suffix();
-  }
-  temp += content;
-
-  // Preprocessor for allowing queue operations
-  std::regex enqueue("(enqueue\\((.*)\\, (.*)\\)))");
-  std::smatch queue_m;
-
-  while (std::regex_search(temp, queue_m, enqueue)) {
-      script_to_execute += queue_m.prefix();
-      script_to_execute += queue_m[2].str();
-      script_to_execute += "[";
-      script_to_execute += queue_m[3].str();
-      script_to_execute += "]";
-      temp = queue_m.suffix();
+      temp = n1ql_m.suffix();
   }
   script_to_execute += temp;
+  script_to_execute.append(builtin_functions);
 
   Local<String> name = String::NewFromUtf8(GetIsolate(), name_s);
   Local<String> source = String::NewFromUtf8(GetIsolate(),
                                              script_to_execute.c_str());
 
-  //cout << "script to execute: " << script_to_execute << endl;
-  ScriptOrigin origin(name);
+  script_to_execute_ = script_to_execute;
+  // cout << "script to execute: " << script_to_execute << endl;
 
   if (!ExecuteScript(source))
       return 2;
@@ -480,26 +649,20 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   Local<String> on_http_post =
       String::NewFromUtf8(GetIsolate(), "OnHTTPPost", NewStringType::kNormal)
         .ToLocalChecked();
-  Local<String> on_timer_event =
-      String::NewFromUtf8(GetIsolate(), "OnTimerEvent", NewStringType::kNormal)
-        .ToLocalChecked();
 
   Local<Value> on_update_val;
   Local<Value> on_delete_val;
   Local<Value> on_http_get_val;
   Local<Value> on_http_post_val;
-  Local<Value> on_timer_event_val;
 
   if (!context->Global()->Get(context, on_update).ToLocal(&on_update_val) ||
       !context->Global()->Get(context, on_delete).ToLocal(&on_delete_val) ||
       !context->Global()->Get(context, on_http_get).ToLocal(&on_http_get_val) ||
       !context->Global()->Get(context, on_http_post).ToLocal(&on_http_post_val) ||
-      !context->Global()->Get(context, on_timer_event).ToLocal(&on_timer_event_val) ||
       !on_update_val->IsFunction() ||
       !on_delete_val->IsFunction() ||
       !on_http_get_val->IsFunction() ||
-      !on_http_post_val->IsFunction() ||
-      !on_timer_event_val->IsFunction()) {
+      !on_http_post_val->IsFunction()) {
       return false;
   }
 
@@ -514,9 +677,6 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
 
   Local<Function> on_http_post_fun = Local<Function>::Cast(on_http_post_val);
   on_http_post_.Reset(GetIsolate(), on_http_post_fun);
-
-  Local<Function> on_timer_event_fun = Local<Function>::Cast(on_timer_event_val);
-  on_timer_event_.Reset(GetIsolate(), on_timer_event_fun);
 
   //TODO: return proper exit codes
   if (!b->Initialize(this, &bucket)) {
@@ -649,7 +809,6 @@ void Worker::SendTimerCallback(const char* k) {
 
     rapidjson::Document doc;
     if (doc.Parse(result.value.c_str()).HasParseError()) {
-        cerr << __LINE__ << " " << __FUNCTION__ << " " << endl;
         return;
     }
 
@@ -677,6 +836,128 @@ void Worker::SendTimerCallback(const char* k) {
   }
 }
 
+const char* Worker::SendContinueRequest(const char* command) {
+  cout << __FUNCTION__ << __LINE__ << endl;
+  Locker locker(GetIsolate());
+  Isolate::Scope isolate_scope(GetIsolate());
+  HandleScope handle_scope(GetIsolate());
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+  Context::Scope context_scope(context);
+
+  cout << __FUNCTION__ << __LINE__ << endl;
+  Debug::SetMessageHandler(GetIsolate(), DebugContinueHandler);
+  const int kBufferSize = 1000;
+  uint16_t buffer[kBufferSize];
+
+  cout << __FUNCTION__ << __LINE__ << endl;
+  Local<String> source = String::NewFromUtf8(GetIsolate(),
+                                             script_to_execute_.c_str());
+
+  if (!ExecuteScript(source))
+      return "Failed to execute application code";
+
+  cout << __FUNCTION__ << __LINE__ << endl;
+  Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
+  cout << __FUNCTION__ << __LINE__ << endl;
+  Debug::ProcessDebugMessages(GetIsolate());
+
+  cout << __FUNCTION__ << __LINE__ << endl;
+  Debug::SetMessageHandler(GetIsolate(), nullptr);
+  cout << __FUNCTION__ << __LINE__ << endl;
+  return continue_result.c_str();
+}
+
+const char* Worker::SendEvaluateRequest(const char* command) {
+  Locker locker(GetIsolate());
+  Isolate::Scope isolate_scope(GetIsolate());
+  HandleScope handle_scope(GetIsolate());
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+  Context::Scope context_scope(context);
+
+  Debug::SetMessageHandler(GetIsolate(), DebugEvaluateHandler);
+  const int kBufferSize = 1000;
+  uint16_t buffer[kBufferSize];
+
+  Local<String> source = String::NewFromUtf8(GetIsolate(),
+                                             script_to_execute_.c_str());
+  if (!ExecuteScript(source))
+      return "Failed to execute application code";
+
+  Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
+  Debug::ProcessDebugMessages(GetIsolate());
+
+  Debug::SetMessageHandler(GetIsolate(), nullptr);
+  return evaluate_result.c_str();
+}
+
+const char* Worker::SendLookupRequest(const char* request) {
+    return "";
+}
+
+const char* Worker::SendBacktraceRequest(const char* request) {
+    return "";
+}
+
+const char* Worker::SendFrameRequest(const char* request) {
+    return "";
+}
+
+const char* Worker::SendSourceRequest(const char* request) {
+    return "";
+}
+
+const char* Worker::SendSetBreakpointRequest(const char* command) {
+  Locker locker(GetIsolate());
+  Isolate::Scope isolate_scope(GetIsolate());
+  HandleScope handle_scope(GetIsolate());
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+  Context::Scope context_scope(context);
+
+  Debug::SetMessageHandler(GetIsolate(), DebugSetBreakpointHandler);
+  const int kBufferSize = 1000;
+  uint16_t buffer[kBufferSize];
+
+  Local<String> source = String::NewFromUtf8(GetIsolate(),
+                                             script_to_execute_.c_str());
+
+  if (!ExecuteScript(source))
+      return "Failed to execute application code";
+
+  Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
+  Debug::ProcessDebugMessages(GetIsolate());
+
+  Debug::SetMessageHandler(GetIsolate(), nullptr);
+  return set_breakpoint_result.c_str();
+}
+
+const char* Worker::SendClearBreakpointRequest(const char* command) {
+  Locker locker(GetIsolate());
+  Isolate::Scope isolate_scope(GetIsolate());
+  HandleScope handle_scope(GetIsolate());
+  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+  Context::Scope context_scope(context);
+
+  Debug::SetMessageHandler(GetIsolate(), DebugClearBreakpointHandler);
+  const int kBufferSize = 1000;
+  uint16_t buffer[kBufferSize];
+
+  Local<String> source = String::NewFromUtf8(GetIsolate(),
+                                             script_to_execute_.c_str());
+
+  if (!ExecuteScript(source))
+      return "Failed to execute application code";
+
+  Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
+  Debug::ProcessDebugMessages(GetIsolate());
+
+  Debug::SetMessageHandler(GetIsolate(), nullptr);
+  return clear_breakpoint_result.c_str();
+}
+
+const char* Worker::SendListBreakpointsRequest(const char* request) {
+    return "";
+}
+
 int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
   Locker locker(GetIsolate());
   Isolate::Scope isolate_scope(GetIsolate());
@@ -685,7 +966,7 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
   Local<Context> context = Local<Context>::New(GetIsolate(), context_);
   Context::Scope context_scope(context);
 
-  //cout << "value: " << value << " meta: " << meta << " type: " << type << endl;
+  cout << "value: " << value << " meta: " << meta << " type: " << type << endl;
   TryCatch try_catch(GetIsolate());
 
   Handle<Value> args[2];
@@ -709,6 +990,7 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
 
   if (try_catch.HasCaught()) {
     //last_exception = ExceptionString(GetIsolate(), &try_catch);
+    cout << "Exception message: " <<  ExceptionString(GetIsolate(), &try_catch) << endl;
     return 2;
   }
 
@@ -789,6 +1071,42 @@ void worker_send_timer_callback(worker* w, const char* keys) {
     w->w->SendTimerCallback(keys);
 }
 
+const char* worker_send_continue_request(worker* w, const char* request) {
+    return w->w->SendContinueRequest(request);
+}
+
+const char* worker_send_evaluate_request(worker* w, const char* request) {
+    return w->w->SendEvaluateRequest(request);
+}
+
+const char* worker_send_lookup_request(worker* w, const char* request) {
+    return w->w->SendLookupRequest(request);
+}
+
+const char* worker_send_backtrace_request(worker* w, const char* request) {
+    return w->w->SendBacktraceRequest(request);
+}
+
+const char* worker_send_frame_request(worker* w, const char* request) {
+    return w->w->SendFrameRequest(request);
+}
+
+const char* worker_send_source_request(worker* w, const char* request) {
+    return w->w->SendSourceRequest(request);
+}
+
+const char* worker_send_setbreakpoint_request(worker* w, const char* request) {
+    return w->w->SendSetBreakpointRequest(request);
+}
+
+const char* worker_send_clearbreakpoint_request(worker* w, const char* request) {
+    return w->w->SendClearBreakpointRequest(request);
+}
+
+const char* worker_send_listbreakpoints_request(worker* w, const char* request) {
+    return w->w->SendListBreakpointsRequest(request);
+}
+
 void worker_dispose(worker* w) {
     w->w->WorkerDispose();
 }
@@ -806,5 +1124,3 @@ void worker_terminate_execution(worker* w) {
 void Worker::WorkerTerminateExecution() {
   V8::TerminateExecution(GetIsolate());
 }
-
-//}

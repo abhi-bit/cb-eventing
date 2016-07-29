@@ -38,4 +38,30 @@ class HTTPResponse {
     Isolate* isolate_;
 };
 
+class HTTPBody {
+  public:
+    HTTPBody(Worker* w);
+    ~HTTPBody();
+
+    Local<Object> WrapHTTPBodyMap();
+
+    Isolate* GetIsolate() { return isolate_; }
+
+    Global<ObjectTemplate> http_body_map_template_;
+
+    //const char* ConvertMapToJson();
+
+    Worker* worker;
+    map<string, string> http_body;
+
+  private:
+    static Local<ObjectTemplate> MakeHTTPBodyMapTemplate(Isolate* isolate);
+
+    static void HTTPBodySet(Local<Name> name, Local<Value> value,
+                          const PropertyCallbackInfo<Value>& info);
+
+    Persistent<Context> context_;
+    Isolate* isolate_;
+};
+
 #endif

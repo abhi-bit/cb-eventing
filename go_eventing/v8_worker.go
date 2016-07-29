@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	_ "net/http/pprof"
-	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -59,14 +58,7 @@ func loadApp(appName string) *worker.Worker {
 	workerTable[appName] = newHandle
 	tableLock.Unlock()
 
-	var value interface{}
-	err = json.Unmarshal([]byte(app.DeploymentConfig), &value)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to unmarshal deployment.json")
-		os.Exit(1)
-	}
-
-	config := value.(map[string]interface{})
+	config := app.DeploymentConfig.(map[string]interface{})
 	httpConfigs := config["http"].([]interface{})
 
 	for appIndex := 0; appIndex < len(httpConfigs); appIndex++ {

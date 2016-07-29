@@ -3,6 +3,7 @@
 
 #include <string>
 #include <include/v8.h>
+#include <include/v8-debug.h>
 #include <include/libplatform/libplatform.h>
 
 #include <libcouchbase/api3.h>
@@ -47,6 +48,8 @@ lcb_t* UnwrapLcbInstance(Local<Object> obj);
 
 lcb_t* UnwrapWorkerLcbInstance(Local<Object> obj);
 
+Worker* UnwrapWorkerInstance(Local<Object> obj);
+
 map<string, string>* UnwrapMap(Local<Object> obj);
 
 class ArrayBufferAllocator : public ArrayBuffer::Allocator {
@@ -74,6 +77,16 @@ class Worker {
     const char* SendHTTPPost(const char* http_req);
     void SendTimerCallback(const char* keys);
 
+    const char* SendContinueRequest(const char* request);
+    const char* SendEvaluateRequest(const char* request);
+    const char* SendLookupRequest(const char* request);
+    const char* SendBacktraceRequest(const char* request);
+    const char* SendFrameRequest(const char* request);
+    const char* SendSourceRequest(const char* request);
+    const char* SendSetBreakpointRequest(const char* request);
+    const char* SendClearBreakpointRequest(const char* request);
+    const char* SendListBreakpointsRequest(const char* request);
+
     void WorkerDispose();
     void WorkerTerminateExecution();
 
@@ -84,11 +97,11 @@ class Worker {
     Persistent<Function> on_update_;
     Persistent<Function> on_http_get_;
     Persistent<Function> on_http_post_;
-    Persistent<Function> on_timer_event_;
 
     Global<ObjectTemplate> worker_template;
 
     lcb_t cb_instance;
+    string script_to_execute_;
 
   private:
     bool ExecuteScript(Local<String> script);

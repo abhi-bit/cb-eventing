@@ -1,24 +1,28 @@
 #include "parse_deployment.h"
 
-deployment_config* ParseDeployment() {
+deployment_config* ParseDeployment(const char* app_name) {
   deployment_config* config = new deployment_config();
 
-  ifstream ifs("./deployment.json");
+  string file_name("./apps/");
+  file_name.append(app_name);
+
+  ifstream ifs(file_name.c_str());
   string content((istreambuf_iterator<char>(ifs)),
                   (istreambuf_iterator<char>()));
 
   rapidjson::Document doc;
   if (doc.Parse(content.c_str()).HasParseError()) {
-    std::cerr << "Unable to parse deployment.json, exiting!" << std::endl;
+    cerr << "Unable to parse deployment config for app: "
+         << app_name << endl;
     exit(1);
   }
 
   assert(doc.IsObject());
 
   {
-      rapidjson::Value& buckets = doc["buckets"];
-      rapidjson::Value& queues = doc["queue"];
-      rapidjson::Value& eventing = doc["workspace"];
+      rapidjson::Value& buckets = doc["depcfg"]["buckets"];
+      rapidjson::Value& queues = doc["depcfg"]["queue"];
+      rapidjson::Value& eventing = doc["depcfg"]["workspace"];
 
       assert(buckets.IsArray());
       assert(queues.IsArray());
@@ -57,6 +61,8 @@ deployment_config* ParseDeployment() {
       config->component_configs["queue"] = queues_info;
 
       config->metadata_bucket.assign(eventing["metadata_bucket"].GetString());
+      config->source_bucket.assign(eventing["source_bucket"].GetString());
+      config->source_endpoint.assign(eventing["source_endpoint"].GetString());
   }
   return config;
 }

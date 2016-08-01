@@ -55,7 +55,7 @@ func workerTableLookup(index workerTableIndex) *worker {
 
 // New creates a new worker, which corresponds to a V8 isolate. A single threaded
 // standalone execution context.
-func New() *Worker {
+func New(aName string) *Worker {
 	workerTableLock.Lock()
 	w := &worker{
 		tableIndex: workerTableNextAvailable,
@@ -69,7 +69,9 @@ func New() *Worker {
 		C.v8_init()
 	})
 
-	w.cWorker = C.worker_new(C.int(w.tableIndex))
+	appName := C.CString(aName)
+	defer C.free(unsafe.Pointer(appName))
+	w.cWorker = C.worker_new(C.int(w.tableIndex), appName)
 
 	externalWorker := &Worker{
 		worker:   w,

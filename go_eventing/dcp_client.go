@@ -24,11 +24,8 @@ var options struct {
 }
 
 var done = make(chan bool, 16)
-var rch = make(chan []interface{}, 10000)
-var tick <-chan time.Time
-var ops uint64
 
-func startBucket(cluster, bucketn string, kvaddrs []string) int {
+func startBucket(cluster, bucketn string, kvaddrs []string, rch chan<- []interface{}) int {
 	defer func() {
 		if r := recover(); r != nil {
 			logging.Errorf("%s:\n%s\n", r, logging.StackTrace())

@@ -12,7 +12,7 @@ const char* worker_version();
 
 void v8_init();
 
-worker* worker_new(int table_index);
+worker* worker_new(int table_index, const char* app_name);
 
 int worker_load(worker* w, char* name_s, char* source_s);
 

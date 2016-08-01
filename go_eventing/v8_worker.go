@@ -8,8 +8,10 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	worker "github.com/abhi-bit/eventing/worker"
+	"github.com/couchbase/go-couchbase"
 	mcd "github.com/couchbase/indexing/secondary/dcp/transport"
 	mc "github.com/couchbase/indexing/secondary/dcp/transport/client"
 	"github.com/couchbase/indexing/secondary/logging"
@@ -48,11 +50,9 @@ func loadApp(appName string) *worker.Worker {
 
 	logging.Infof("Loading application handler for app: %s\n", appName)
 
-	newHandle := worker.New()
+	newHandle := worker.New(appName)
 	newHandle.Quit = make(chan string, 1)
 	newHandle.Load(appName, app.AppHandlers)
-
-	workerChannel <- newHandle
 
 	tableLock.Lock()
 	workerTable[appName] = newHandle
@@ -72,17 +72,21 @@ func loadApp(appName string) *worker.Worker {
 	return newHandle
 }
 
-func handleDcpEvent(handle *worker.Worker, msg []interface{}) {
+func handleDcpEvent(handle *worker.Worker, msg []interface{},
+	bucket *couchbase.Bucket, ops *uint64) {
 	m := msg[1].(*mc.DcpEvent)
 	if m.Opcode == mcd.DCP_MUTATION {
 
-		logging.Infof("Sending key: %s to handle: %s",
-			string(m.Key), workerHTTPReferrerTableBackIndex[handle])
+		bucketName := msg[0].(string)
 		// Fetching CAS value from KV to ensure idempotent-ness of callback handlers
 		casValue := fmt.Sprintf("%d", m.Cas)
 		_, err := bucket.GetRaw(casValue)
 
 		if err != nil {
+			atomic.AddUint64(ops, 1)
+			logging.Infof("Sending key: %s from bucket: %s to handle: %s",
+				string(m.Key), bucketName,
+				workerHTTPReferrerTableBackIndex[handle])
 			logging.Tracef("DCP_MUTATION opcode flag %x cas: %x error: %#v\n",
 				m.Flags, m.Cas, err.Error())
 
@@ -97,6 +101,8 @@ func handleDcpEvent(handle *worker.Worker, msg []interface{}) {
 				mEvent, err := json.Marshal(meta)
 				if err == nil {
 					//TODO: check for return code of SendUpdate
+					logging.Infof("Sending DCP_MUTATION to: %s\n",
+						workerHTTPReferrerTableBackIndex[handle])
 					handle.SendUpdate(string(m.Value), string(mEvent), "json")
 				} else {
 					logging.Infof("Failed to marshal update event: %#v\n", meta)
@@ -130,21 +136,38 @@ func handleDcpEvent(handle *worker.Worker, msg []interface{}) {
 			logging.Infof("Failed to marshal delete event: %#v\n", m)
 		}
 		if err := handle.SendDelete(string(msg)); err == nil {
-			atomic.AddUint64(&ops, 1)
+			atomic.AddUint64(ops, 1)
 		}
 	}
 }
 
-func handleWorker(handle *worker.Worker) {
+func runWorker(rch <-chan []interface{}, tick <-chan time.Time,
+	aName string, handle *worker.Worker, bucket *couchbase.Bucket) {
 	defer workerWG.Done()
 	var appName string
+	var ops uint64
+
+	go func() {
+		for {
+			select {
+			case <-tick:
+				logging.Infof("Appname: %s Processed %d mutations\n",
+					aName, atomic.LoadUint64(&ops))
+			}
+		}
+	}()
+
+	tableLock.Lock()
 	logging.Tracef("INIT: handle: %#v BI: %#v chan item left count: %d\n",
 		handle, workerHTTPReferrerTableBackIndex[handle], len(workerChannel))
+	tableLock.Unlock()
 	for {
+		tableLock.Lock()
 		logging.Tracef("GOROUTINE handle:%#v BI: %#v BI Dump: %#v WHTTP: %#v WT: %#v chan size: %d\n",
 			handle, workerHTTPReferrerTableBackIndex[handle],
 			workerHTTPReferrerTableBackIndex, workerHTTPReferrerTable,
 			workerTable, len(handle.Quit))
+		tableLock.Unlock()
 		select {
 		case appName = <-handle.Quit:
 			tableLock.Lock()
@@ -158,43 +181,8 @@ func handleWorker(handle *worker.Worker) {
 			handle = loadApp(appName)
 
 		case msg := <-rch:
-			handleDcpEvent(handle, msg)
+			handleDcpEvent(handle, msg, bucket, &ops)
 		}
 	}
-
-}
-
-func runWorker() {
-	workerChannel = make(chan *worker.Worker, 100)
-	timerEventWorkerChannel = make(chan *worker.Worker, 100)
-
-	go func() {
-		for {
-			select {
-			case <-tick:
-				logging.Infof("Processed %d mutations\n", atomic.LoadUint64(&ops))
-			}
-		}
-	}()
-
-	files, _ := ioutil.ReadDir("./apps/")
-
-	for _, file := range files {
-		loadApp(file.Name())
-	}
-
-	go func() {
-		startTimerProcessing()
-	}()
-
-	for {
-		select {
-		case handle := <-workerChannel:
-			go handleWorker(handle)
-			workerWG.Add(1)
-			timerEventWorkerChannel <- handle
-		}
-	}
-	workerWG.Wait()
 
 }

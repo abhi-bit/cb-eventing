@@ -463,7 +463,7 @@ vector<string> split(const string &s, char delim) {
     return elems;
 }
 
-Worker::Worker(int tindex) {
+Worker::Worker(int tindex, const char* app_name) {
   Isolate::CreateParams create_params;
   create_params.array_buffer_allocator = &allocator;
   isolate_ = Isolate::New(create_params);
@@ -487,16 +487,17 @@ Worker::Worker(int tindex) {
     printf("ERROR Print exception: %s\n", last_exception.c_str());
   }
 
-
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 
-  cb_cluster_endpoint.assign("donut");
-  cb_cluster_bucket.assign("default");
+  app_name_ = app_name;
+  deployment_config* result = ParseDeployment(app_name);
+
+  cb_cluster_endpoint.assign(result->source_endpoint);
+  cb_cluster_bucket.assign(result->source_bucket);
 
  //context->Enter();
 
-  deployment_config* result = ParseDeployment();
   map<string, map<string, vector<string> > >::iterator it = result->component_configs.begin();
 
   for (; it != result->component_configs.end(); it++) {
@@ -1053,9 +1054,9 @@ void v8_init() {
   V8::Initialize();
 }
 
-worker* worker_new(int table_index) {
+worker* worker_new(int table_index, const char* app_name) {
   worker* wrkr = (worker*)malloc(sizeof(worker));
-  wrkr->w = new Worker(table_index);
+  wrkr->w = new Worker(table_index, app_name);
   return wrkr;
 }
 

@@ -14,23 +14,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abhi-bit/eventing/worker"
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
-var bucket *couchbase.Bucket
 var appSetup chan string
 var appServerWG sync.WaitGroup
 
-func argParse() string {
-	var buckets string
-	var kvaddrs string
+type v8handleBucketConfig struct {
+	bucket *couchbase.Bucket
+	handle *worker.Worker
+}
 
-	flag.StringVar(&buckets, "buckets", "default",
-		"buckets to listen")
-	flag.StringVar(&kvaddrs, "kvaddrs", "",
-		"list of kv-nodes to connect")
+func argParse() {
+
 	flag.IntVar(&options.maxVbno, "maxvb", 1024,
 		"maximum number of vbuckets")
 	flag.IntVar(&options.stats, "stats", 1000,
@@ -48,7 +47,6 @@ func argParse() string {
 
 	flag.Parse()
 
-	options.buckets = strings.Split(buckets, ",")
 	if options.debug {
 		logging.SetLogLevel(logging.Debug)
 	} else if options.trace {
@@ -56,17 +54,6 @@ func argParse() string {
 	} else {
 		logging.SetLogLevel(logging.Info)
 	}
-	if kvaddrs == "" {
-		logging.Fatalf("please provided -kvaddrs")
-	}
-	options.kvaddrs = strings.Split(kvaddrs, ",")
-
-	args := flag.Args()
-	if len(args) < 1 {
-		usage()
-		os.Exit(1)
-	}
-	return args[0]
 }
 
 func usage() {
@@ -109,33 +96,57 @@ func processApp(appName string) {
 	}
 }
 
-func main() {
-	cluster := argParse()
+func getSource(appName string) (string, string, string) {
+	logging.Infof("Reading config for app: %s \n", appName)
 
-	connStr := "http://donut:8091"
+	appData, err := ioutil.ReadFile("./apps/" + appName)
+	if err == nil {
+		var app application
+		err := json.Unmarshal(appData, &app)
+		if err != nil {
+			logging.Infof("Failed parse application data for app: %s\n", appName)
+		}
+
+		config := app.DeploymentConfig.(map[string]interface{})
+		workspace := config["workspace"].(map[string]interface{})
+
+		srcBucket := workspace["source_bucket"].(string)
+		metaBucket := workspace["metadata_bucket"].(string)
+		srcEndpoint := workspace["source_endpoint"].(string)
+		return srcBucket, metaBucket, srcEndpoint
+	}
+	return "", "", ""
+}
+
+func setUpEventingApp(appName string) {
+	srcBucket, metaBucket, srcEndpoint := getSource(appName)
+	// TODO: return if any of the above fields are missing
+	log.Printf("srcBucket: %s metadata bucket: %s srcEndpoint: %s\n",
+		srcBucket, metaBucket, srcEndpoint)
+
+	connStr := "http://" + srcEndpoint + ":8091"
+
 	c, err := couchbase.Connect(connStr)
-	mf(err, "connect failure")
-
 	pool, err := c.GetPool("default")
-	mf(err, "pool")
-
-	bucket, err = pool.GetBucket("eventing")
+	bucket, err := pool.GetBucket(metaBucket)
 
 	var sleep time.Duration
 	sleep = 1
 	for err != nil {
-		logging.Infof("Bucket eventing missing, retrying after %d seconds, err: %#v\n",
-			sleep, err)
+		logging.Infof("Bucket: %s missing, retrying after %d seconds, err: %#v\n",
+			metaBucket, sleep, err)
 		time.Sleep(time.Second * sleep)
+		// TODO: more error logging
 		c, _ = couchbase.Connect(connStr)
 		pool, _ = c.GetPool("default")
-		bucket, err = pool.GetBucket("eventing")
+		bucket, err = pool.GetBucket(metaBucket)
 		if sleep < 8 {
 			sleep = sleep * 2
 		}
 	}
 
-	// setup cbauth
+	cluster := srcEndpoint + ":8091"
+	logging.Infof("clutser: %s auth: %#v\n", cluster, options.auth)
 	if options.auth != "" {
 		up := strings.Split(options.auth, ":")
 		if _, err := cbauth.InternalRetryDefaultInit(cluster, up[0], up[1]); err != nil {
@@ -143,17 +154,48 @@ func main() {
 		}
 	}
 
-	for _, b := range options.buckets {
-		go startBucket(cluster, b, options.kvaddrs)
-	}
+	kvaddr := srcEndpoint + ":11210"
+	kvaddrs := []string{kvaddr}
+
+	// Mutation channel for source bucket
+	rch := make(chan []interface{}, 10000)
+
+	// TODO: Figure right way to terminate this goroutine on app undeploy
+	fmt.Printf("Starting up bucket dcp feed for appName: %s with bucket: %s\n",
+		appName, srcBucket)
+	go startBucket(cluster, srcBucket, kvaddrs, rch)
+
+	var tick <-chan time.Time
 
 	if options.stats > 0 {
 		tick = time.Tick(time.Millisecond * time.Duration(options.stats))
 	}
 
-	go func() {
-		runWorker()
-	}()
+	handle := loadApp(appName)
+
+	config := v8handleBucketConfig{
+		bucket: bucket,
+		handle: handle,
+	}
+
+	timerEventWorkerChannel <- config
+
+	go runWorker(rch, tick, appName, handle, bucket)
+}
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	workerChannel = make(chan *worker.Worker, 100)
+	timerEventWorkerChannel = make(chan v8handleBucketConfig, 100)
+
+	argParse()
+	files, _ := ioutil.ReadDir("./apps/")
+	for _, file := range files {
+		setUpEventingApp(file.Name())
+	}
+
+	go startTimerProcessing()
 
 	go func() {
 		fs := http.FileServer(http.Dir("../ui"))

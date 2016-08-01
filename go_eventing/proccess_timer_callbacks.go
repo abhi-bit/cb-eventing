@@ -5,12 +5,11 @@ import (
 	"sync"
 	"time"
 
-	worker "github.com/abhi-bit/eventing/worker"
 	"github.com/couchbase/indexing/secondary/logging"
 	"github.com/jehiah/go-strftime"
 )
 
-var timerEventWorkerChannel chan *worker.Worker
+var timerEventWorkerChannel chan v8handleBucketConfig
 var timerWG sync.WaitGroup
 var fixedZone = time.FixedZone("", 0)
 
@@ -31,13 +30,16 @@ func NewISO8601(t time.Time) time.Time {
 	return time.Time(date)
 }
 
-func processTimerEvent(handle *worker.Worker) {
+func processTimerEvent(v8handleBucket v8handleBucketConfig) {
 	timerTick := time.Tick(time.Second)
 	defer timerWG.Done()
 	for {
 		select {
 		case <-timerTick:
 			t := NewISO8601(time.Now().UTC())
+
+			handle := v8handleBucket.handle
+			bucket := v8handleBucket.bucket
 
 			docID := strftime.Format("%Y-%m-%dT%H:%M:%S", t)
 			value, flag, cas, err := bucket.GetsRaw(docID)
@@ -65,8 +67,8 @@ func processTimerEvent(handle *worker.Worker) {
 func startTimerProcessing() {
 	for {
 		select {
-		case handle := <-timerEventWorkerChannel:
-			go processTimerEvent(handle)
+		case v8handleBucket := <-timerEventWorkerChannel:
+			go processTimerEvent(v8handleBucket)
 			timerWG.Add(1)
 
 		}

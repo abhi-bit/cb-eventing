@@ -97,11 +97,13 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 		handle.Quit <- appName
 		logging.Infof("Sent message to quit channel")
 	} else {
-		handle := loadApp(appName)
-		go handleWorker(handle)
-		workerWG.Add(1)
+
+		/*handle := loadApp(appName)
+		workerChannel <- handle
+		go setUpEventingApp()
+		workerWG.Add(1)*/
 		logging.Infof("Sending message to setup http handlers for app: %s", appName)
-		appSetup <- appName
+		//appSetup <- appName
 	}
 	fmt.Fprintf(w, "Stored application config to disk\n")
 }

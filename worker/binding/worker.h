@@ -64,7 +64,7 @@ class ArrayBufferAllocator : public ArrayBuffer::Allocator {
 
 class Worker {
   public:
-    Worker(int table_index);
+    Worker(int table_index, const char* app_name);
     ~Worker();
 
     int WorkerLoad(char* name_s, char* source_s);
@@ -108,6 +108,7 @@ class Worker {
 
     int x;
     int table_index;
+    string app_name_;
 
     ArrayBufferAllocator allocator;
     Isolate* isolate_;

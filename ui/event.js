@@ -31,7 +31,7 @@
 
     }]);
 
-    ev.run(['$http', function($http) {
+    ev.run(['$http', '$window', function($http, $window) {
         $http.get('http://localhost:6061/get_application')
         .then(function(response) {
             for(var i = 0; i < response.data.length; i++) {
@@ -39,6 +39,11 @@
                 applications.push(response.data[i]);
             }
         });
+        $window.onbeforeunload = function(e) {
+            e.preventDefault();
+            $window.setTimeout(function () { $window.location = e.srcElement.origin + '/event.html/'; }, 0);
+            $window.onbeforeunload = null;
+        };
     }]);
 
     ev.directive('appHeader', function(){

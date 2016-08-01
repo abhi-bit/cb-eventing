@@ -1,6 +1,13 @@
 <div class="main">
     <div ng-show="resEditCtrl.showJsonEditor" ng-model="resEditCtrl.currentApp.depcfg" ui-ace="{mode: 'json', useWrapMode:true,}">
     </div>
+    <div ng-show="resEditCtrl.showLoading">
+        <br><br><br><br>
+        <input type="file" on-read-file="resEditCtrl.showContent($fileContent)" />
+        <pre>
+        <img ng-src="{{resEditCtrl.content}}", class="thumb">
+        </pre>
+    </div>
     <div ng-show="resEditCtrl.showJSEditor" ng-model="resEditCtrl.currentApp.handlers" ui-ace="{mode: 'javascript', useWrapMode:true,}">
     </div>
 </div>

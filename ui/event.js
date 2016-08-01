@@ -130,15 +130,47 @@
         if(values[2] == 'Deployment Plan') {
             this.showJsonEditor = true;
             this.showJSEditor = false;
+            this.showLoading = false;
         }
         else if(values[2] == 'Handlers') {
             this.showJsonEditor = false;
             this.showJSEditor = true;
+            this.showLoading = false;
+        }
+        else if(values[2] == 'Static Resources') {
+            this.showJsonEditor = false;
+            this.showJSEditor = false;
+            this.showLoading = true;
         }
         else {
             this.showJSEditor = false;
             this.showJsonEditor = false;
+            this.showLoading = false;
         }
+        this.showContent = function($fileContent) {
+            this.content = $fileContent;
+        };
     }]);
 
+    ev.directive('onReadFile', ['$parse', function ($parse) {
+        return {
+            restrict: 'A',
+            scope: false,
+            controller: 'ResEditorController',
+            controllerAs: 'resEditCtrl',
+            link: function(scope, element, attrs) {
+                var fn = $parse(attrs.onReadFile);
+                element.on('change', function(onChangeEvent) {
+                    var reader = new FileReader();
+                    reader.onload = function(onLoadEvent) {
+                        scope.$apply(function() {
+                            fn(scope, {$fileContent:onLoadEvent.target.result});
+                        });
+                    };
+                    reader.readAsDataURL((onChangeEvent.srcElement || onChangeEvent.target).files[0]);
+                });
+            }
+        };
+    }]);
 })();
+

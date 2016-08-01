@@ -1,9 +1,9 @@
 .top {
-position:absolute;
-left:0; right:0;
-height: 300px;
-width: 1500px;
-background: #F0EEE7;
+    position:absolute;
+    left:0; right:0;
+    height: 300px;
+    width: 1500px;
+    background: #F0EEE7;
 }
 
 #img {
@@ -13,17 +13,24 @@ background: #F0EEE7;
 }
 
 .left {
-position:absolute;
-left:0; top:92px; bottom: 0;
-width: 178px;
-background: #F0EEE7;
+    position:absolute;
+    left:0; top:92px; bottom: 0;
+    width: 178px;
+    background: #F0EEE7;
 }
 
 .main {
-position: absolute;
-left:178px; top:92px; right:0; bottom:0;
-background: white;
-color: black;
+    position: absolute;
+    left:178px; top:92px; right:0; bottom:0;
+    background: white;
+    color: black;
+    height: 100%;
+}
+
+.thumb {
+    height: 40px;
+    border: 1px solid #000;
+    margin: 10px 5px 0 0;
 }
 
 .ace_editor { height:600px;width:1250px  }

@@ -35,6 +35,7 @@
         $http.get('http://localhost:6061/get_application')
         .then(function(response) {
             for(var i = 0; i < response.data.length; i++) {
+                response.data[i].depcfg = JSON.stringify(response.data[i].depcfg, null, ' ');
                 applications.push(response.data[i]);
             }
         });
@@ -167,7 +168,8 @@
                             fn(scope, {$fileContent:onLoadEvent.target.result});
                         });
                     };
-                    reader.readAsDataURL((onChangeEvent.srcElement || onChangeEvent.target).files[0]);
+                    console.log((onChangeEvent.srcElement || onChangeEvent.target).files[0].name);
+                    reader.readAsBinaryString((onChangeEvent.srcElement || onChangeEvent.target).files[0]);
                 });
             }
         };

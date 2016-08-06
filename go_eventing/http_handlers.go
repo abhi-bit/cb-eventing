@@ -24,6 +24,7 @@ type application struct {
 	Expand           bool        `json:"expand"`
 	DeploymentConfig interface{} `json:"depcfg"`
 	AppHandlers      string      `json:"handlers"`
+	Assets			 interface{} `json:"assets"`
 }
 
 func handleJsRequests(w http.ResponseWriter, r *http.Request) {

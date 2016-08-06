@@ -31,7 +31,7 @@
 
     }]);
 
-    ev.run(['$http', function($http) {
+    ev.run(['$http', '$window', function($http, $window) {
         $http.get('http://localhost:6061/get_application')
         .then(function(response) {
             for(var i = 0; i < response.data.length; i++) {
@@ -39,6 +39,11 @@
                 applications.push(response.data[i]);
             }
         });
+        $window.onbeforeunload = function(e) {
+            e.preventDefault();
+            $window.setTimeout(function () { $window.location = e.srcElement.origin + '/event.html/'; }, 0);
+            $window.onbeforeunload = null;
+        };
     }]);
 
     ev.directive('appHeader', function(){
@@ -68,6 +73,7 @@
                 application.expand = false;
                 application.depcfg = '{"_comment": "Enter deployment configuration"}';
                 application.handlers = "/* Enter handlers code here */";
+                application.assets = [];
                 this.applications.push(application);
             }
             this.newApplication={};
@@ -101,9 +107,10 @@
 
         this.deployApplication = function() {
             this.currentApp.deploy = true;
-            this.currentApp.depcfg = JSON.parse(this.currentApp.depcfg);
+            var x = angular.copy(this.currentApp);
+            x.depcfg = JSON.parse(x.depcfg);
             var uri = 'http://localhost:6061/set_application/?name=' + this.currentApp.name;
-            var res = $http.post(uri, this.currentApp);
+            var res = $http.post(uri, x);
             res.success(function(data, status, headers, config) {
                 this.set_application = data;
             });
@@ -148,8 +155,8 @@
             this.showJsonEditor = false;
             this.showLoading = false;
         }
-        this.showContent = function($fileContent) {
-            this.content = $fileContent;
+        this.saveAsset = function(asset, content) {
+            this.currentApp.assets.push({name:asset.name, content:content});
         };
     }]);
 
@@ -165,11 +172,10 @@
                     var reader = new FileReader();
                     reader.onload = function(onLoadEvent) {
                         scope.$apply(function() {
-                            fn(scope, {$fileContent:onLoadEvent.target.result});
+                            fn(scope, {asset : (onChangeEvent.srcElement || onChangeEvent.target).files[0], content : onLoadEvent.target.result});
                         });
                     };
-                    console.log((onChangeEvent.srcElement || onChangeEvent.target).files[0].name);
-                    reader.readAsBinaryString((onChangeEvent.srcElement || onChangeEvent.target).files[0]);
+                    reader.readAsDataURL((onChangeEvent.srcElement || onChangeEvent.target).files[0]);
                 });
             }
         };

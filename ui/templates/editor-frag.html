@@ -3,10 +3,11 @@
     </div>
     <div ng-show="resEditCtrl.showLoading">
         <br><br><br><br>
-        <input type="file" on-read-file="resEditCtrl.showContent($fileContent)" />
-        <pre>
-        <img ng-src="{{resEditCtrl.content}}", class="thumb">
-        </pre>
+        <input type="file" on-read-file="resEditCtrl.saveAsset(asset, content)" />
+        <li ng-repeat="asset in resEditCtrl.currentApp.assets">
+        <h4> {{asset.name}} </h4>
+        <img ng-src="{{asset.content}}" class="thumb">
+        </li>
     </div>
     <div ng-show="resEditCtrl.showJSEditor" ng-model="resEditCtrl.currentApp.handlers" ui-ace="{mode: 'javascript', useWrapMode:true,}">
     </div>

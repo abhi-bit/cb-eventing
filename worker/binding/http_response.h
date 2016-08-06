@@ -12,6 +12,8 @@
 using namespace std;
 using namespace v8;
 
+class HTTPBody;
+
 class HTTPResponse {
   public:
     HTTPResponse(Worker* w);
@@ -28,10 +30,12 @@ class HTTPResponse {
     Worker* worker;
     map<string, string> http_response;
 
+    HTTPBody* http_body;
+
   private:
     static Local<ObjectTemplate> MakeHTTPResponseMapTemplate(Isolate* isolate);
 
-    static void HTTPResponseSet(Local<Name> name, Local<Value> value,
+    static void HTTPResponseGet(Local<Name> name,
                           const PropertyCallbackInfo<Value>& info);
 
     Persistent<Context> context_;
@@ -40,7 +44,7 @@ class HTTPResponse {
 
 class HTTPBody {
   public:
-    HTTPBody(Worker* w);
+    HTTPBody(Isolate* isolate);
     ~HTTPBody();
 
     Local<Object> WrapHTTPBodyMap();
@@ -49,18 +53,14 @@ class HTTPBody {
 
     Global<ObjectTemplate> http_body_map_template_;
 
-    //const char* ConvertMapToJson();
+    const char* ConvertMapToJson();
 
-    Worker* worker;
     map<string, string> http_body;
 
   private:
-    static Local<ObjectTemplate> MakeHTTPBodyMapTemplate(Isolate* isolate);
-
     static void HTTPBodySet(Local<Name> name, Local<Value> value,
                           const PropertyCallbackInfo<Value>& info);
 
-    Persistent<Context> context_;
     Isolate* isolate_;
 };
 

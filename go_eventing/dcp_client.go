@@ -23,9 +23,8 @@ var options struct {
 	trace      bool
 }
 
-var done = make(chan bool, 16)
-
-func startBucket(cluster, bucketn string, kvaddrs []string, rch chan<- []interface{}) int {
+func startBucket(cluster, bucketn string,
+	kvaddrs []string, chans handleChans) {
 	defer func() {
 		if r := recover(); r != nil {
 			logging.Errorf("%s:\n%s\n", r, logging.StackTrace())
@@ -52,11 +51,11 @@ func startBucket(cluster, bucketn string, kvaddrs []string, rch chan<- []interfa
 	dcpConfig := map[string]interface{}{
 		"genChanSize":    10000,
 		"dataChanSize":   10000,
-		"numConnections": 4,
+		"numConnections": 1,
 	}
 
 	dcpFeed, err := b.StartDcpFeedOver(
-		couchbase.NewDcpFeedName("rawupr"),
+		couchbase.NewDcpFeedName("eventing"),
 		uint32(0), options.kvaddrs, 0xABCD, dcpConfig)
 
 	sleep = 1
@@ -64,7 +63,7 @@ func startBucket(cluster, bucketn string, kvaddrs []string, rch chan<- []interfa
 		logging.Infof("Unable to open DCP Feed, retrying after %d seconds\n", sleep)
 		time.Sleep(time.Second * sleep)
 
-		dcpFeed, err = b.StartDcpFeedOver(couchbase.NewDcpFeedName("rawupr"),
+		dcpFeed, err = b.StartDcpFeedOver(couchbase.NewDcpFeedName("eventing"),
 			uint32(0), options.kvaddrs, 0xABCD, dcpConfig)
 
 		if sleep < 8 {
@@ -81,18 +80,21 @@ func startBucket(cluster, bucketn string, kvaddrs []string, rch chan<- []interfa
 		printFlogs(vbnos, flogs)
 	}
 
-	go startDcp(dcpFeed, flogs)
+	go startDcp(dcpFeed, flogs, chans)
 
 	for {
 		e, ok := <-dcpFeed.C
 		if ok == false {
-			logging.Infof("Closing for bucket %q\n", b.Name)
+			logging.Infof("Closing for bucket %q", b.Name)
+			close(chans.rch)
+			return
 		}
-		rch <- []interface{}{b.Name, e}
+		chans.rch <- []interface{}{b.Name, e}
 	}
 }
 
-func startDcp(dcpFeed *couchbase.DcpFeed, flogs couchbase.FailoverLog) {
+func startDcp(dcpFeed *couchbase.DcpFeed, flogs couchbase.FailoverLog,
+	hChans handleChans) {
 	start, end := uint64(0), uint64(0xFFFFFFFFFFFFFFFF)
 	snapStart, snapEnd := uint64(0), uint64(0)
 	for vbno, flog := range flogs {
@@ -102,6 +104,16 @@ func startDcp(dcpFeed *couchbase.DcpFeed, flogs couchbase.FailoverLog) {
 			vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
 		mf(err, fmt.Sprintf("stream-req for %v failed", vbno))
 	}
+
+	select {
+	case appName := <-hChans.dcpStreamClose:
+		logging.Infof("Closing dcp stream related to app: %s",
+			appName)
+		close(hChans.dcpStreamClose)
+		dcpFeed.Close()
+		return
+	}
+
 }
 
 func mf(err error, msg string) {

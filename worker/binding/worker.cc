@@ -487,6 +487,10 @@ Worker::Worker(int tindex, const char* app_name) {
     printf("ERROR Print exception: %s\n", last_exception.c_str());
   }
 
+  string v8_debug_flag("--expose-debug-as=debug");
+
+  V8::SetFlagsFromString(v8_debug_flag.c_str(), v8_debug_flag.length());
+
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -22,11 +23,22 @@ import (
 
 var appSetup chan string
 var appServerWG sync.WaitGroup
+var workerWG sync.WaitGroup
+var appHTTPservers map[string][]*HTTPServer
+
+type handleChans struct {
+	dcpStreamClose  chan string
+	timerEventClose chan bool
+	rch             chan []interface{}
+}
 
 type v8handleBucketConfig struct {
 	bucket *couchbase.Bucket
 	handle *worker.Worker
+	hChans *handleChans
 }
+
+var appDoneChans map[string]handleChans
 
 func argParse() {
 
@@ -57,11 +69,12 @@ func argParse() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage : %s [OPTIONS] <cluster-addr> \n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage : %s [OPTIONS] <cluster-addr> \n",
+		os.Args[0])
 	flag.PrintDefaults()
 }
 
-func processApp(appName string) {
+func performAppHTTPSetup(appName string) {
 	logging.Infof("Reading config for app: %s \n", appName)
 
 	appData, err := ioutil.ReadFile("./apps/" + appName)
@@ -69,7 +82,8 @@ func processApp(appName string) {
 		var app application
 		err := json.Unmarshal(appData, &app)
 		if err != nil {
-			logging.Infof("Failed parse application data for app: %s\n", appName)
+			logging.Infof("Failed parse application data for app: %s",
+				appName)
 		}
 
 		config := app.DeploymentConfig.(map[string]interface{})
@@ -80,18 +94,44 @@ func processApp(appName string) {
 		for appIndex := 0; appIndex < len(httpConfigs); appIndex++ {
 			httpConfig := httpConfigs[appIndex].(map[string]interface{})
 
-			serverURIRegexp := fmt.Sprintf("%s*", httpConfig["root_uri_path"].(string))
-			serverPortCombo := fmt.Sprintf("localhost:%s", httpConfig["port"].(string))
+			serverURIRegexp := fmt.Sprintf("%s*",
+				httpConfig["root_uri_path"].(string))
+			serverPortCombo := fmt.Sprintf("localhost:%s",
+				httpConfig["port"].(string))
 
-			go func() {
+			tcpListener, err := net.Listen("tcp", serverPortCombo)
+			if err != nil {
+				logging.Errorf("Regexp http server error: %s", err.Error())
+			}
+			httpServer := createHTTPServer(tcpListener)
+
+			regexpHandler := &RegexpHandler{}
+			regexpHandler.HandleFunc(regexp.MustCompile(serverURIRegexp),
+				handleJsRequests)
+
+			log.Printf("Started listening on server:port: %s on endpoint: %s\n",
+				serverPortCombo, serverURIRegexp)
+
+			tableLock.Lock()
+			defer tableLock.Unlock()
+			if _, ok := appHTTPservers[appName]; ok {
+				appHTTPservers[appName] = append(
+					appHTTPservers[appName],
+					httpServer)
+			} else {
+				appHTTPservers = make(map[string][]*HTTPServer)
+				appHTTPservers[appName] = make([]*HTTPServer, 1)
+				appHTTPservers[appName][0] = httpServer
+			}
+
+			go func(httpServer *HTTPServer,
+				regexpHandler *RegexpHandler) {
 				defer appServerWG.Done()
-				regexpHandler := &RegexpHandler{}
-				regexpHandler.HandleFunc(regexp.MustCompile(serverURIRegexp), handleJsRequests)
-
-				log.Printf("Started listening on server_port_combo: %s on endpoint: %s\n",
-					serverPortCombo, serverURIRegexp)
-				log.Fatal(http.ListenAndServe(serverPortCombo, regexpHandler))
-			}()
+				logging.Tracef("HTTPServer started up")
+				http.Serve(httpServer, regexpHandler)
+				httpServer.Listener.Close()
+				logging.Infof("HTTPServer cleanly closed")
+			}(httpServer, regexpHandler)
 		}
 	}
 }
@@ -104,7 +144,7 @@ func getSource(appName string) (string, string, string) {
 		var app application
 		err := json.Unmarshal(appData, &app)
 		if err != nil {
-			logging.Infof("Failed parse application data for app: %s\n", appName)
+			logging.Infof("Failed parse application data for app: %s", appName)
 		}
 
 		config := app.DeploymentConfig.(map[string]interface{})
@@ -121,7 +161,7 @@ func getSource(appName string) (string, string, string) {
 func setUpEventingApp(appName string) {
 	srcBucket, metaBucket, srcEndpoint := getSource(appName)
 	// TODO: return if any of the above fields are missing
-	log.Printf("srcBucket: %s metadata bucket: %s srcEndpoint: %s\n",
+	log.Printf("srcBucket: %s metadata bucket: %s srcEndpoint: %s",
 		srcBucket, metaBucket, srcEndpoint)
 
 	connStr := "http://" + srcEndpoint + ":8091"
@@ -133,7 +173,7 @@ func setUpEventingApp(appName string) {
 	var sleep time.Duration
 	sleep = 1
 	for err != nil {
-		logging.Infof("Bucket: %s missing, retrying after %d seconds, err: %#v\n",
+		logging.Infof("Bucket: %s missing, retrying after %d seconds, err: %#v",
 			metaBucket, sleep, err)
 		time.Sleep(time.Second * sleep)
 		// TODO: more error logging
@@ -158,17 +198,25 @@ func setUpEventingApp(appName string) {
 	kvaddrs := []string{kvaddr}
 
 	// Mutation channel for source bucket
-	rch := make(chan []interface{}, 10000)
+	chans := handleChans{
+		dcpStreamClose:  make(chan string, 1),
+		timerEventClose: make(chan bool, 1),
+		rch:             make(chan []interface{}, 10000),
+	}
+
+	tableLock.Lock()
+	appDoneChans[appName] = chans
+	tableLock.Unlock()
 
 	// TODO: Figure right way to terminate this goroutine on app undeploy
 	fmt.Printf("Starting up bucket dcp feed for appName: %s with bucket: %s\n",
 		appName, srcBucket)
-	go startBucket(cluster, srcBucket, kvaddrs, rch)
+	go startBucket(cluster, srcBucket, kvaddrs, chans)
 
-	var tick <-chan time.Time
+	var ticker *time.Ticker
 
 	if options.stats > 0 {
-		tick = time.Tick(time.Millisecond * time.Duration(options.stats))
+		ticker = time.NewTicker(time.Millisecond * time.Duration(options.stats))
 	}
 
 	handle := loadApp(appName)
@@ -176,11 +224,13 @@ func setUpEventingApp(appName string) {
 	config := v8handleBucketConfig{
 		bucket: bucket,
 		handle: handle,
+		hChans: &chans,
 	}
 
 	timerEventWorkerChannel <- config
 
-	go runWorker(rch, tick, appName, handle, bucket)
+	workerWG.Add(1)
+	go runWorker(chans, ticker, appName, handle, bucket)
 }
 
 func main() {
@@ -188,6 +238,8 @@ func main() {
 
 	workerChannel = make(chan *worker.Worker, 100)
 	timerEventWorkerChannel = make(chan v8handleBucketConfig, 100)
+
+	appDoneChans = make(map[string]handleChans)
 
 	argParse()
 	files, _ := ioutil.ReadDir("./apps/")
@@ -221,9 +273,10 @@ func main() {
 	for {
 		select {
 		case appName := <-appSetup:
-			go processApp(appName)
+			go performAppHTTPSetup(appName)
 			logging.Infof("Got message to load app: %s", appName)
 		}
 	}
 	appServerWG.Wait()
+	workerWG.Wait()
 }

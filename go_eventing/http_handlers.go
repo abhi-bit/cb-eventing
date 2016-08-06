@@ -28,7 +28,6 @@ type application struct {
 
 func handleJsRequests(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-
 		req := httpRequest{
 			// TODO: make it cleaner for http based application request partitioning
 			Path: strings.Split(r.URL.Path, "/")[2],
@@ -90,20 +89,27 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 
 	ioutil.WriteFile("./apps/"+appName, []byte(content), 0644)
 
+	tableLock.Lock()
+	defer tableLock.Unlock()
+
+	// Cleaning up previous HTTPServer on app redeploy
+	if httpServerList, ok := appHTTPservers[appName]; ok {
+		for i, v := range httpServerList {
+			logging.Infof("App: %s HTTPServer #%d stopped",
+				appName, i)
+			v.Close()
+		}
+	}
+
 	if handle, ok := workerTable[appName]; ok {
-		logging.Infof("Sending %s workerTable dump: %#v\n", appName, workerTable)
+		logging.Infof("Sending %s workerTable dump: %#v",
+			appName, workerTable)
 		// Sending control message to reload update application handlers
 		logging.Infof("Going to send message to quit channel")
 		handle.Quit <- appName
 		logging.Infof("Sent message to quit channel")
-	} else {
-
-		/*handle := loadApp(appName)
-		workerChannel <- handle
-		go setUpEventingApp()
-		workerWG.Add(1)*/
-		logging.Infof("Sending message to setup http handlers for app: %s", appName)
-		//appSetup <- appName
+		appSetup <- appName
+		go setUpEventingApp(appName)
 	}
 	fmt.Fprintf(w, "Stored application config to disk\n")
 }
@@ -114,28 +120,29 @@ func v8DebugHandler(w http.ResponseWriter, r *http.Request) {
 	appName := values["appname"][0]
 
 	if handle, ok := workerTable[appName]; ok {
-		payload := make([]byte, r.ContentLength)
-		r.Body.Read(payload)
+		p := make([]byte, r.ContentLength)
+		r.Body.Read(p)
+		payload := string(p)
 		var response string
 		switch command {
 		case "continue":
-			response = handle.SendContinueRequest(string(payload))
+			response = handle.SendContinueRequest(payload)
 		case "evaluate":
-			response = handle.SendEvaluateRequest(string(payload))
+			response = handle.SendEvaluateRequest(payload)
 		case "lookup":
-			response = handle.SendLookupRequest(string(payload))
+			response = handle.SendLookupRequest(payload)
 		case "backtrace":
-			response = handle.SendBacktraceRequest(string(payload))
+			response = handle.SendBacktraceRequest(payload)
 		case "frame":
-			response = handle.SendFrameRequest(string(payload))
+			response = handle.SendFrameRequest(payload)
 		case "source":
-			response = handle.SendSourceRequest(string(payload))
+			response = handle.SendSourceRequest(payload)
 		case "setbreakpoint":
-			response = handle.SendSetBreakpointRequest(string(payload))
+			response = handle.SendSetBreakpointRequest(payload)
 		case "clearbreakpoint":
-			response = handle.SendClearBreakpointRequest(string(payload))
+			response = handle.SendClearBreakpointRequest(payload)
 		case "listbreakpoints":
-			response = handle.SendListBreakpoints(string(payload))
+			response = handle.SendListBreakpoints(payload)
 		}
 		fmt.Fprintf(w, "%s", response)
 	} else {

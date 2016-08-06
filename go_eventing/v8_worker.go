@@ -26,7 +26,6 @@ var workerTable = make(map[string]*worker.Worker)
 var workerHTTPReferrerTable = make(map[string]*worker.Worker)
 var workerHTTPReferrerTableBackIndex = make(map[*worker.Worker]string)
 var workerChannel chan *worker.Worker
-var workerWG sync.WaitGroup
 var tableLock sync.Mutex
 
 type eventMeta struct {
@@ -45,7 +44,8 @@ func loadApp(appName string) *worker.Worker {
 
 	err = json.Unmarshal(data, &app)
 	if err != nil {
-		logging.Infof("Failed to unmarshal configs for application: %s\n", appName)
+		logging.Infof("Failed to unmarshal configs for application: %s",
+			appName)
 	}
 
 	logging.Infof("Loading application handler for app: %s\n", appName)
@@ -125,7 +125,8 @@ func handleDcpEvent(handle *worker.Worker, msg []interface{},
 
 			}
 		} else {
-			logging.Tracef("Skipped mutation triggered by handler code, cas: %s\n", casValue)
+			logging.Tracef("Skipped mutation triggered by handler code, cas: %s",
+				casValue)
 			bucket.Delete(casValue)
 		}
 
@@ -141,29 +142,26 @@ func handleDcpEvent(handle *worker.Worker, msg []interface{},
 	}
 }
 
-func runWorker(rch <-chan []interface{}, tick <-chan time.Time,
+func runWorker(chans handleChans, ticker *time.Ticker,
 	aName string, handle *worker.Worker, bucket *couchbase.Bucket) {
 	defer workerWG.Done()
+
 	var appName string
 	var ops uint64
 
-	go func() {
-		for {
-			select {
-			case <-tick:
-				logging.Infof("Appname: %s Processed %d mutations\n",
-					aName, atomic.LoadUint64(&ops))
-			}
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Errorf("%s:\n%s\n", r, logging.StackTrace())
 		}
 	}()
 
 	tableLock.Lock()
-	logging.Tracef("INIT: handle: %#v BI: %#v chan item left count: %d\n",
+	logging.Tracef("INIT: handle: %#v \nBI: %#v \nchan item left count: %d",
 		handle, workerHTTPReferrerTableBackIndex[handle], len(workerChannel))
 	tableLock.Unlock()
 	for {
 		tableLock.Lock()
-		logging.Tracef("GOROUTINE handle:%#v BI: %#v BI Dump: %#v WHTTP: %#v WT: %#v chan size: %d\n",
+		logging.Tracef("handle:%#v \nBI: %#v \nBI Dump: %#v \n WHTTP: %#v WT: %#v \n chan size: %d",
 			handle, workerHTTPReferrerTableBackIndex[handle],
 			workerHTTPReferrerTableBackIndex, workerHTTPReferrerTable,
 			workerTable, len(handle.Quit))
@@ -171,18 +169,31 @@ func runWorker(rch <-chan []interface{}, tick <-chan time.Time,
 		select {
 		case appName = <-handle.Quit:
 			tableLock.Lock()
+			logging.Infof("Got message on quit channel for appname: %s",
+				appName)
 			referrer := workerHTTPReferrerTableBackIndex[handle]
 			delete(workerHTTPReferrerTable, referrer)
 			delete(workerHTTPReferrerTableBackIndex, handle)
-			tableLock.Unlock()
-			logging.Infof("Got message on quit channel for appname: %s\n", appName)
+
+			hChans := appDoneChans[appName]
+			hChans.dcpStreamClose <- appName
+
+			logging.Tracef("Sending message to timerClose: %#v",
+				hChans.timerEventClose)
+			hChans.timerEventClose <- true
+			delete(appDoneChans, appName)
+
+			ticker.Stop()
 			handle.TerminateExecution()
+			tableLock.Unlock()
+			return
 
-			handle = loadApp(appName)
-
-		case msg := <-rch:
+		case msg := <-chans.rch:
 			handleDcpEvent(handle, msg, bucket, &ops)
+
+		case <-ticker.C:
+			logging.Infof("Appname: %s Processed %d mutations",
+				aName, atomic.LoadUint64(&ops))
 		}
 	}
-
 }

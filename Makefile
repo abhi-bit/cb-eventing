@@ -21,7 +21,7 @@ binding:
 	rm -rf $(OBJECT_FILES)
 
 go:
-	cd go_eventing; CGO_LDFLAGS=$(CGO_LDFLAGS) go build -race
+	cd go_eventing; CGO_LDFLAGS=$(CGO_LDFLAGS) GOOS=darwin go build -race -ldflags="-s -w"
 
 all: binding go
 

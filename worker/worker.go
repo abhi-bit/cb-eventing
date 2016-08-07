@@ -1,7 +1,6 @@
 package worker
 
 /*
-#cgo LDFLAGS: -L/Users/asingh/.cbdepscache/lib/ -lv8_binding
 #include <stdlib.h>
 #include "binding/binding.h"
 */

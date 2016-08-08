@@ -24,7 +24,6 @@ type application struct {
 	Expand           bool        `json:"expand"`
 	DeploymentConfig interface{} `json:"depcfg"`
 	AppHandlers      string      `json:"handlers"`
-	Assets			 interface{} `json:"assets"`
 }
 
 func handleJsRequests(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +100,7 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 			v.Close()
 		}
 	}
+	delete(appHTTPservers, appName)
 
 	if handle, ok := workerTable[appName]; ok {
 		logging.Infof("Sending %s workerTable dump: %#v",
@@ -111,6 +111,9 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 		logging.Infof("Sent message to quit channel")
 		appSetup <- appName
 		go setUpEventingApp(appName)
+	} else {
+		go setUpEventingApp(appName)
+		appSetup <- appName
 	}
 	fmt.Fprintf(w, "Stored application config to disk\n")
 }

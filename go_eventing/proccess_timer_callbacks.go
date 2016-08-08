@@ -61,8 +61,10 @@ func processTimerEvent(v8handleBucket v8handleBucketConfig) {
 			select {
 			case valueCh <- bucketGet(bucket, docID):
 				value := <-valueCh
+				tableLock.Lock()
 				logging.Tracef("Processed timer event for docid: %#v bucket: %s",
 					docID, workerHTTPReferrerTableBackIndex[handle])
+				tableLock.Unlock()
 				handle.SendTimerCallback(value)
 
 				// Purge all timer event and docid once they are processed

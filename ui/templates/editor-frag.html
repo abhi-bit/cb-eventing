@@ -1,14 +1,24 @@
 <div class="main">
-    <div ng-show="resEditCtrl.showJsonEditor" ng-model="resEditCtrl.currentApp.depcfg" ui-ace="{mode: 'json', useWrapMode:true,}">
+    <div ng-show="resEditCtrl.showJsonEditor" ng-model="resEditCtrl.currentApp.depcfg" ng-readonly="resEditCtrl.currentApp.deploy" ui-ace="{mode: 'json', useWrapMode:true,}">
     </div>
     <div ng-show="resEditCtrl.showLoading">
         <br><br><br><br>
-        <input type="file" on-read-file="resEditCtrl.saveAsset(asset, content)" />
-        <li ng-repeat="asset in resEditCtrl.currentApp.assets">
-        <h4> {{asset.name}} </h4>
-        <img ng-src="{{asset.content}}" class="thumb">
-        </li>
+        <div ng-show="!resEditCtrl.currentApp.deploy">
+            <input type="file" on-read-file="resEditCtrl.saveAsset(asset, content)" />
+            <br><br>
+        </div>
+        <table>
+            <tbody ng-repeat="asset in resEditCtrl.currentApp.assets">
+                <tr ng-show="asset.operation !== 'delete'">
+                    <td>
+                        <input type="text" size=40 ng-model="asset.name" placeholder="asset.name" ng-readonly="resEditCtrl.currentApp.deploy">
+                    </td>
+                    <td ng-show="!resEditCtrl.currentApp.deploy">
+                            <button ng-click="resEditCtrl.deleteAsset(asset)">Delete</button>
+                    </td>
+                </tr>
+        </table>
     </div>
-    <div ng-show="resEditCtrl.showJSEditor" ng-model="resEditCtrl.currentApp.handlers" ui-ace="{mode: 'javascript', useWrapMode:true,}">
+    <div ng-show="resEditCtrl.showJSEditor" ng-model="resEditCtrl.currentApp.handlers" ng-readonly="resEditCtrl.currentApp.deploy" ui-ace="{mode: 'javascript', useWrapMode:true,}">
     </div>
 </div>

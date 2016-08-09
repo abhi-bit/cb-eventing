@@ -156,8 +156,12 @@
             this.showLoading = false;
         }
         this.saveAsset = function(asset, content) {
-            this.currentApp.assets.push({name:asset.name, content:content});
+            this.currentApp.assets.push({name:asset.name, content:content, operation:"add", id:this.currentApp.assets.length});
         };
+        this.deleteAsset = function(asset) {
+            asset.operation = "delete";
+            asset.content = null;
+        }
     }]);
 
     ev.directive('onReadFile', ['$parse', function ($parse) {

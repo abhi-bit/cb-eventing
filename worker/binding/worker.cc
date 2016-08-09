@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <regex>
 #include <sstream>
 #include <typeinfo>
@@ -299,6 +300,29 @@ void Print(const FunctionCallbackInfo<Value>& args) {
   fflush(stdout);
 }
 
+string ConvertToISO8601(string timestamp) {
+  char buf[sizeof "2016-08-09T10:11:12"];
+  string buf_s;
+  time_t now;
+
+  int timerValue = atoi(timestamp.c_str());
+
+  // Expiry timers more than 30 days will mention epoch
+  // otherwise it will mention seconds from when key
+  // was set
+  if (timerValue > 25920000) {
+    now = timerValue;
+    strftime(buf, sizeof buf, "%FT%T", gmtime(&now));
+    buf_s.assign(buf);
+  } else {
+    time(&now);
+    now += timerValue;
+    strftime(buf, sizeof buf, "%FT%T", gmtime(&now));
+    buf_s.assign(buf);
+  }
+  return buf_s;
+}
+
 void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
   HandleScope handle_scope(args.GetIsolate());
   String::Utf8Value callbackFuncName(args[0]);
@@ -311,10 +335,21 @@ void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
   //    "document_id": docid,
   //    "start_timestamp": timestamp
   // }
-  string callback_func, doc_id, timestamp, value;
+  string callback_func, doc_id, startTs, timestamp, value;
   callback_func.assign(string(*callbackFuncName));
   doc_id.assign(string(*documentID));
-  timestamp.assign(string(*startTimestamp));
+  startTs.assign(string(*startTimestamp));
+
+  // If the doc not supposed to expire, skip
+  // setting up timer callback for it
+  if (atoi(startTs.c_str()) == 0) {
+      fprintf(stdout,
+              "Skipping timer callback setup for doc_id: %s doc won't expire\n",
+              doc_id.c_str());
+      return;
+  }
+
+  timestamp = ConvertToISO8601(startTs);
 
   rapidjson::StringBuffer s;
   rapidjson::Writer<rapidjson::StringBuffer> writer(s);
@@ -987,7 +1022,8 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
 
   if(try_catch.HasCaught()) {
     string last_exception = ExceptionString(GetIsolate(), &try_catch);
-    printf("Logged: %s\n", last_exception.c_str());
+    fprintf(stderr, "Logged: %s\n", last_exception.c_str());
+    fflush(stderr);
   }
 
   Local<Function> on_doc_update = Local<Function>::New(GetIsolate(), on_update_);

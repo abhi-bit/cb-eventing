@@ -26,6 +26,14 @@ var appServerWG sync.WaitGroup
 var workerWG sync.WaitGroup
 var appHTTPservers map[string][]*HTTPServer
 
+type staticAssetInfo struct {
+	appName string
+	bucket  *couchbase.Bucket
+}
+
+var uriPrefixAppMap map[string]*staticAssetInfo
+var uriPrefixAppnameBackIndex map[string]string
+
 type handleChans struct {
 	dcpStreamClose  chan string
 	timerEventClose chan bool
@@ -94,10 +102,14 @@ func performAppHTTPSetup(appName string) {
 		for appIndex := 0; appIndex < len(httpConfigs); appIndex++ {
 			httpConfig := httpConfigs[appIndex].(map[string]interface{})
 
-			serverURIRegexp := fmt.Sprintf("%s*",
-				httpConfig["root_uri_path"].(string))
+			// TODO: Flip to using to copy/append
+			// benchmarks - https://play.golang.org/p/BPJzQHUbqq
+			URIPath := httpConfig["root_uri_path"].(string)
+			serverURIRegexp := fmt.Sprintf("%s*", URIPath)
 			serverPortCombo := fmt.Sprintf("localhost:%s",
 				httpConfig["port"].(string))
+			staticAssetURIRegexp := fmt.Sprintf("%sstatic_assets/",
+				URIPath)
 
 			tcpListener, err := net.Listen("tcp", serverPortCombo)
 			if err != nil {
@@ -106,6 +118,10 @@ func performAppHTTPSetup(appName string) {
 			httpServer := createHTTPServer(tcpListener)
 
 			regexpHandler := &RegexpHandler{}
+			// Handling static asset requests
+			regexpHandler.HandleFunc(regexp.MustCompile(staticAssetURIRegexp),
+				handleStaticAssets)
+
 			regexpHandler.HandleFunc(regexp.MustCompile(serverURIRegexp),
 				handleJsRequests)
 
@@ -124,12 +140,27 @@ func performAppHTTPSetup(appName string) {
 				appHTTPservers[appName][0] = httpServer
 			}
 
+			_, metaBucket, srcEndpoint := getSource(appName)
+			connStr := "http://" + srcEndpoint + ":8091"
+
+			c, err := couchbase.Connect(connStr)
+			pool, err := c.GetPool("default")
+			bucket, err := pool.GetBucket(metaBucket)
+
+			info := &staticAssetInfo{
+				appName: appName,
+				bucket:  bucket,
+			}
+
+			path := strings.Split(URIPath, "/")[1]
+			uriPrefixAppMap[path] = info
+			uriPrefixAppnameBackIndex[appName] = path
+
 			go func(httpServer *HTTPServer,
 				regexpHandler *RegexpHandler) {
 				defer appServerWG.Done()
 				logging.Tracef("HTTPServer started up")
 				http.Serve(httpServer, regexpHandler)
-				httpServer.Listener.Close()
 				logging.Infof("HTTPServer cleanly closed")
 			}(httpServer, regexpHandler)
 		}
@@ -208,7 +239,6 @@ func setUpEventingApp(appName string) {
 	appDoneChans[appName] = chans
 	tableLock.Unlock()
 
-	// TODO: Figure right way to terminate this goroutine on app undeploy
 	fmt.Printf("Starting up bucket dcp feed for appName: %s with bucket: %s\n",
 		appName, srcBucket)
 	go startBucket(cluster, srcBucket, kvaddrs, chans)
@@ -240,6 +270,8 @@ func main() {
 	timerEventWorkerChannel = make(chan v8handleBucketConfig, 100)
 
 	appDoneChans = make(map[string]handleChans)
+	uriPrefixAppMap = make(map[string]*staticAssetInfo)
+	uriPrefixAppnameBackIndex = make(map[string]string)
 
 	argParse()
 	files, _ := ioutil.ReadDir("./apps/")

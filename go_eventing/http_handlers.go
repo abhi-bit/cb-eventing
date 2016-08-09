@@ -18,12 +18,35 @@ type httpRequest struct {
 }
 
 type application struct {
-	Name             string      `json:"name"`
-	ID               uint64      `json:"id"`
-	DeploymentStatus bool        `json:"deploy"`
-	Expand           bool        `json:"expand"`
-	DeploymentConfig interface{} `json:"depcfg"`
-	AppHandlers      string      `json:"handlers"`
+	Name             string                   `json:"name"`
+	ID               uint64                   `json:"id"`
+	DeploymentStatus bool                     `json:"deploy"`
+	Expand           bool                     `json:"expand"`
+	DeploymentConfig interface{}              `json:"depcfg"`
+	AppHandlers      string                   `json:"handlers"`
+	Assets           []map[string]interface{} `json:"assets"`
+}
+
+func handleStaticAssets(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		splits := strings.Split(r.RequestURI, "/")
+		requestURI := splits[1]
+		assetName := splits[3]
+
+		info := uriPrefixAppMap[requestURI]
+		assetCBKey := fmt.Sprintf("%s_%s", info.appName, assetName)
+		content, err := info.bucket.GetRaw(assetCBKey)
+		if err != nil {
+			logging.Infof("Failed to fetch asset: %s with error: %s",
+				assetCBKey, err.Error())
+			fmt.Fprintf(w, "Failed to fetch asset\n")
+		} else {
+			fmt.Println(content)
+			fmt.Fprintf(w, "asset fetch success\n")
+		}
+	} else {
+		fmt.Fprintf(w, "Operation not supported for static assets\n")
+	}
 }
 
 func handleJsRequests(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +110,45 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	content, _ := ioutil.ReadAll(r.Body)
 	appName := values["name"][0]
 
-	ioutil.WriteFile("./apps/"+appName, []byte(content), 0644)
+	tableLock.Lock()
+	path := uriPrefixAppnameBackIndex[appName]
+	info := uriPrefixAppMap[path]
+	tableLock.Unlock()
+
+	var app application
+	err := json.Unmarshal(content, &app)
+	if err != nil {
+		errString := fmt.Sprintf("Failed to unmarshal payload for appname: %s",
+			appName)
+		logging.Errorf("%s", errString)
+		fmt.Fprintf(w, "%s\n", errString)
+		return
+	}
+
+	for _, asset := range app.Assets {
+		assetCBKey := asset["name"].(string)
+		switch asset["operation"].(string) {
+		case "delete":
+			info.bucket.Delete(assetCBKey)
+		case "change":
+			content := asset["content"].([]byte)
+			info.bucket.SetRaw(assetCBKey, 0, content)
+		default:
+		}
+		delete(asset, "operation")
+		delete(asset, "content")
+	}
+
+	appContent, err := json.Marshal(app)
+	if err != nil {
+		errString := fmt.Sprintf("Failed to marshal payload for appname: %s",
+			appName)
+		logging.Errorf("%s", errString)
+		fmt.Fprintf(w, "%s\n", errString)
+		return
+	}
+
+	ioutil.WriteFile("./apps/"+appName, []byte(appContent), 0644)
 
 	tableLock.Lock()
 	defer tableLock.Unlock()
@@ -97,7 +158,7 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 		for i, v := range httpServerList {
 			logging.Infof("App: %s HTTPServer #%d stopped",
 				appName, i)
-			v.Close()
+			v.Listener.Close()
 		}
 	}
 	delete(appHTTPservers, appName)
@@ -105,6 +166,12 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	if handle, ok := workerTable[appName]; ok {
 		logging.Infof("Sending %s workerTable dump: %#v",
 			appName, workerTable)
+
+		// Cleanup job
+		path := uriPrefixAppnameBackIndex[appName]
+		delete(uriPrefixAppnameBackIndex, appName)
+		delete(uriPrefixAppMap, path)
+
 		// Sending control message to reload update application handlers
 		logging.Infof("Going to send message to quit channel")
 		handle.Quit <- appName

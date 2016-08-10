@@ -27,6 +27,11 @@ type application struct {
 	Assets           []map[string]interface{} `json:"assets"`
 }
 
+type staticAsset struct {
+	MimeType string `json:"mime_type"`
+	Content  string `json:"content"`
+}
+
 func handleStaticAssets(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		splits := strings.Split(r.RequestURI, "/")
@@ -41,8 +46,15 @@ func handleStaticAssets(w http.ResponseWriter, r *http.Request) {
 				assetCBKey, err.Error())
 			fmt.Fprintf(w, "Failed to fetch asset\n")
 		} else {
-			fmt.Println(content)
-			fmt.Fprintf(w, "asset fetch success\n")
+			sAsset := staticAsset{}
+			err := json.Unmarshal(content, &sAsset)
+			if err != nil {
+				logging.Infof("Failed to unmarshal static asset: %s",
+					assetCBKey)
+				fmt.Fprintf(w, "Failed to fetch asset\n")
+			}
+			w.Header().Set("Content-Type", sAsset.MimeType)
+			fmt.Fprintf(w, "%s", sAsset.Content)
 		}
 	} else {
 		fmt.Fprintf(w, "Operation not supported for static assets\n")
@@ -125,18 +137,48 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, asset := range app.Assets {
-		assetCBKey := asset["name"].(string)
-		switch asset["operation"].(string) {
-		case "delete":
-			info.bucket.Delete(assetCBKey)
-		case "change":
-			content := asset["content"].([]byte)
-			info.bucket.SetRaw(assetCBKey, 0, content)
-		default:
+	// Creating a copy of assets supplied
+	// in order to delte entries from there
+	// Not a good idea to purge entries from
+	// app.Assets when one is iterating using it
+	assetList := app.Assets
+
+	for index, asset := range assetList {
+		assetCBKey := fmt.Sprintf("%s_%s",
+			appName, asset["name"].(string))
+
+		if _, ok := asset["operation"]; ok {
+			switch asset["operation"].(string) {
+			case "delete":
+				info.bucket.Delete(assetCBKey)
+				if len(app.Assets) > 1 {
+					app.Assets = append(
+						app.Assets[:index], app.Assets[index+1:]...)
+				} else {
+					app.Assets = app.Assets[:0]
+				}
+			case "add":
+				splits := strings.Split(asset["content"].(string), ",")
+				//content := splits[1]
+				mimeType := strings.Split(splits[0], ":")[1]
+
+				asset["mimeType"] = mimeType
+				sAsset := staticAsset{
+					MimeType: mimeType,
+					//Content:  content,
+					Content: asset["content"].(string),
+				}
+				assetBlob, err := json.Marshal(sAsset)
+				if err != nil {
+					logging.Infof("Failed to marshal static asset: %s",
+						assetCBKey)
+					continue
+				}
+				info.bucket.SetRaw(assetCBKey, 0, assetBlob)
+				delete(asset, "operation")
+				delete(asset, "content")
+			}
 		}
-		delete(asset, "operation")
-		delete(asset, "content")
 	}
 
 	appContent, err := json.Marshal(app)

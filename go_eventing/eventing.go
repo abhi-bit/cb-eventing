@@ -180,10 +180,11 @@ func getSource(appName string) (string, string, string) {
 
 		config := app.DeploymentConfig.(map[string]interface{})
 		workspace := config["workspace"].(map[string]interface{})
+		source := config["source"].(map[string]interface{})
 
-		srcBucket := workspace["source_bucket"].(string)
+		srcBucket := source["source_bucket"].(string)
 		metaBucket := workspace["metadata_bucket"].(string)
-		srcEndpoint := workspace["source_endpoint"].(string)
+		srcEndpoint := "localhost"
 		return srcBucket, metaBucket, srcEndpoint
 	}
 	return "", "", ""

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -53,8 +54,9 @@ func handleStaticAssets(w http.ResponseWriter, r *http.Request) {
 					assetCBKey)
 				fmt.Fprintf(w, "Failed to fetch asset\n")
 			}
+			sDec, _ := base64.StdEncoding.DecodeString(sAsset.Content)
 			w.Header().Set("Content-Type", sAsset.MimeType)
-			fmt.Fprintf(w, "%s", sAsset.Content)
+			fmt.Fprintf(w, "%s", string(sDec))
 		}
 	} else {
 		fmt.Fprintf(w, "Operation not supported for static assets\n")
@@ -159,14 +161,13 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 				}
 			case "add":
 				splits := strings.Split(asset["content"].(string), ",")
-				//content := splits[1]
+				content := splits[1]
 				mimeType := strings.Split(splits[0], ":")[1]
 
 				asset["mimeType"] = mimeType
 				sAsset := staticAsset{
 					MimeType: mimeType,
-					//Content:  content,
-					Content: asset["content"].(string),
+					Content:  content,
 				}
 				assetBlob, err := json.Marshal(sAsset)
 				if err != nil {

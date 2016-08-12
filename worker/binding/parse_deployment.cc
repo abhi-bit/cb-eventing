@@ -22,11 +22,13 @@ deployment_config* ParseDeployment(const char* app_name) {
   {
       rapidjson::Value& buckets = doc["depcfg"]["buckets"];
       rapidjson::Value& queues = doc["depcfg"]["queue"];
-      rapidjson::Value& eventing = doc["depcfg"]["workspace"];
+      rapidjson::Value& workspace = doc["depcfg"]["workspace"];
+      rapidjson::Value& source = doc["depcfg"]["source"];
 
       assert(buckets.IsArray());
       assert(queues.IsArray());
-      assert(eventing.IsObject());
+      assert(workspace.IsObject());
+      assert(source.IsObject());
 
       map<string, vector<string> > buckets_info;
       for(rapidjson::SizeType i = 0; i < buckets.Size(); i++) {
@@ -60,9 +62,9 @@ deployment_config* ParseDeployment(const char* app_name) {
       }
       config->component_configs["queue"] = queues_info;
 
-      config->metadata_bucket.assign(eventing["metadata_bucket"].GetString());
-      config->source_bucket.assign(eventing["source_bucket"].GetString());
-      config->source_endpoint.assign(eventing["source_endpoint"].GetString());
+      config->metadata_bucket.assign(workspace["metadata_bucket"].GetString());
+      config->source_bucket.assign(source["source_bucket"].GetString());
+      config->source_endpoint.assign("localhost");
   }
   return config;
 }

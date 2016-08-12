@@ -7,5 +7,13 @@
         <br><br><br><br>
         <button align="left" ng-click="perAppCtrl.undeployApplication()">Undeploy Application</button>
     </div>
+    <br><br><br><br>
     <button align="left">Save to disk</button>
+    <br><br><br><br>
+    <div ng-show="!perAppCtrl.currentApp.debug">
+        <button align="left" ng-click="perAppCtrl.startDbg()">Start Debug</button>
+    </div>
+    <div ng-show="perAppCtrl.currentApp.debug">
+        <button align="left" ng-click="perAppCtrl.stopDbg()">Stop Debug</button>
+    </div>
 </div>

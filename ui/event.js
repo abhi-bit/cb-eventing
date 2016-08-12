@@ -74,6 +74,7 @@
                 application.depcfg = '{"_comment": "Enter deployment configuration"}';
                 application.handlers = "/* Enter handlers code here */";
                 application.assets = [];
+                application.debug = false;
                 this.applications.push(application);
             }
             this.newApplication={};
@@ -121,6 +122,29 @@
 
         this.undeployApplication = function() {
             this.currentApp.deploy = false;
+        }
+
+        this.startDbg = function() {
+            this.currentApp.debug = true;
+            var uri = 'http://localhost:6061/start_dbg/?name=' + this.currentApp.name;
+            var res = $http.post(uri, null);
+            res.success(function(data, status, headers, config) {
+                this.set_application = data;
+            });
+            res.error(function(data, status, headers, config) {
+                alert( "failure message: " + JSON.stringify({data: data}));
+            });
+        }
+        this.stopDbg = function() {
+            this.currentApp.debug = false;
+            var uri = 'http://localhost:6061/stop_dbg/?name=' + this.currentApp.name;
+            var res = $http.post(uri, null);
+            res.success(function(data, status, headers, config) {
+                this.set_application = data;
+            });
+            res.error(function(data, status, headers, config) {
+                alert( "failure message: " + JSON.stringify({data: data}));
+            });
         }
 
     }]);

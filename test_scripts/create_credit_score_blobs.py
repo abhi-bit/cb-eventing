@@ -32,7 +32,7 @@ for i in xrange(int(doc_count)):
              'missed_emi_payments': missed_emi_payments}
 
     try:
-        cb.upsert(key, value, format=couchbase.FMT_JSON)
+        cb.upsert(key, value, ttl=5, format=couchbase.FMT_JSON)
     except:
         print "Upsert failed for doc id: ", key
         continue

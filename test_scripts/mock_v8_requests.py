@@ -2,7 +2,7 @@ import json
 from random import randint
 import requests
 
-v8_debug_endpoint = "http://localhost:6061/debug"
+v8_debug_endpoint = "http://localhost:6062/debug"
 
 
 def fire_continue_request(seq):
@@ -135,7 +135,7 @@ def fire_clearbreakpoint_request(seq):
     command["type"] = "request"
     command["command"] = "clearbreakpoint"
     command["arguments"] = dict()
-    # command["arguments"]["type"] = "function"
+    command["arguments"]["type"] = "function"
     command["arguments"]["breakpoint"] = 1  # no. of breakpoints to clear
 
     command_to_fire = json.dumps(command)
@@ -162,13 +162,13 @@ def fire_listbreakpoints_request(seq):
 
 def main():
     seq = randint(100, 1000)
-    fire_continue_request(seq)
-    fire_evaluate_request(seq + 1)
-    fire_lookup_request(seq + 2)
-    fire_backtrace_request(seq + 3)
-    fire_frame_request(seq + 4)
-    fire_source_request(seq + 5)
-    fire_setbreakpoint_request(seq + 6)
+    # fire_continue_request(seq)
+    # fire_evaluate_request(seq + 1)
+    # fire_lookup_request(seq + 2)
+    # fire_backtrace_request(seq + 3)
+    # fire_frame_request(seq + 4)
+    # fire_source_request(seq + 5)
+    # fire_setbreakpoint_request(seq + 6)
     fire_clearbreakpoint_request(seq + 7)
     fire_listbreakpoints_request(seq + 8)
 

@@ -52,3 +52,14 @@ func BenchmarkBucketGet(b *testing.B) {
 			entry.contenType)
 	}
 }
+
+func BenchmarkEnqueue(b *testing.B) {
+	handle := worker.New("app1")
+	handle.Load("app1", "function OnUpdate(doc, meta) { enqueue(order_queue, meta.key); }\n function OnDelete() {}\n function OnHTTPGet(req, res) {}\n function OnHTTPPost(req, res) {}")
+
+	for n := 0; n < b.N; n++ {
+		handle.SendUpdate(entry.value,
+			entry.metadata,
+			entry.contenType)
+	}
+}

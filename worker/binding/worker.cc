@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <curl/curl.h>
 #include <regex>
 #include <sstream>
 #include <typeinfo>
@@ -414,7 +415,7 @@ void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
 
   value.assign(s.GetString());
 
-  lcb_t* bucket_cb_handle = reinterpret_cast<lcb_t*>(args.GetIsolate()->GetData(0));
+  lcb_t* bucket_cb_handle = reinterpret_cast<lcb_t*>(args.GetIsolate()->GetData(1));
 
   lcb_CMDSTORE scmd = { 0 };
   LCB_CMD_SET_KEY(&scmd, doc_id.c_str(), doc_id.length());
@@ -469,7 +470,67 @@ void RegisterCallback(const FunctionCallbackInfo<Value>& args) {
   lcb_wait(*bucket_cb_handle);
 }
 
+void PostMail(char* app_name, char* to, char* subject, char* body) {
+  CURL* curl;
+  CURLcode res;
 
+  curl_global_init(CURL_GLOBAL_ALL);
+
+  curl = curl_easy_init();
+  if (curl) {
+    curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:6063/sendmail/");
+    char buf[1000];
+    sprintf(buf, "app_name=%s&to=%s&subject=%s&body=%s",
+            app_name, to, subject, body);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, buf);
+
+    res = curl_easy_perform(curl);
+    if (res != CURLE_OK)
+        fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                curl_easy_strerror(res));
+
+    curl_easy_cleanup(curl);
+  }
+  curl_global_cleanup();
+}
+
+void SendMail(const FunctionCallbackInfo<Value>& args) {
+  string app_name, mail_to, mail_subject, mail_body;
+  Worker* w = NULL;
+
+  {
+    Isolate* isolate = args.GetIsolate();
+    w = static_cast<Worker*>(isolate->GetData(0));
+    assert(w->GetIsolate() == isolate);
+
+    Locker locker(w->GetIsolate());
+    HandleScope handle_Scope(isolate);
+
+    Local<Context> context = Local<Context>::New(w->GetIsolate(), w->context_);
+    Context::Scope context_scope(context);
+
+    Local<Value> m_to = args[0];
+    assert(m_to->IsString());
+    String::Utf8Value s_m_to(m_to);
+    mail_to = ToCString(s_m_to);
+
+    Local<Value> m_subject = args[1];
+    assert(m_subject->IsString());
+    String::Utf8Value s_m_subject(m_subject);
+    mail_subject = ToCString(s_m_subject);
+
+    Local<Value> m_body = args[2];
+    assert(m_body->IsString());
+    String::Utf8Value s_m_body(m_body);
+    mail_body = ToCString(s_m_body);
+
+    app_name.assign(w->app_name_);
+  }
+  PostMail((char*)app_name.c_str(),
+           (char*)mail_to.c_str(),
+           (char*)mail_subject.c_str(),
+           (char*)mail_body.c_str());
+}
 
 // Exception details will be appended to the first argument.
 string ExceptionString(Isolate* isolate, TryCatch* try_catch) {
@@ -554,7 +615,7 @@ Worker::Worker(int tindex, const char* app_name) {
   HandleScope handle_scope(isolate_);
 
   isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
-  //isolate->SetData(0, w);
+  isolate_->SetData(0, this);
   table_index = tindex;
   Local<ObjectTemplate> global = ObjectTemplate::New(GetIsolate());
 
@@ -564,6 +625,8 @@ Worker::Worker(int tindex, const char* app_name) {
               FunctionTemplate::New(GetIsolate(), Print));
   global->Set(String::NewFromUtf8(GetIsolate(), "registerCallback"),
               FunctionTemplate::New(GetIsolate(), RegisterCallback));
+  global->Set(String::NewFromUtf8(GetIsolate(), "sendmail"),
+              FunctionTemplate::New(GetIsolate(), SendMail));
   if(try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
     printf("ERROR Print exception: %s\n", last_exception.c_str());
@@ -778,7 +841,7 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   }
 
   // Wrap around the lcb handle into v8 isolate
-  this->GetIsolate()->SetData(0, (void *)(&cb_instance));
+  this->GetIsolate()->SetData(1, (void *)(&cb_instance));
   return SUCCESS;
 }
 

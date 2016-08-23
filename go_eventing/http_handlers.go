@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"net/smtp"
 	"runtime"
 	"strings"
 
@@ -15,6 +16,10 @@ import (
 )
 
 var v8TCPListener net.Listener
+
+func init() {
+	http.HandleFunc("/debug", v8DebugHandler)
+}
 
 type httpRequest struct {
 	Path   string            `json:"path"`
@@ -210,6 +215,14 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(appHTTPservers, appName)
 
+	httpServer := appMailHTTPservers[appName]
+	httpServer.Listener.Close()
+
+	mailChan := appMailChanMapping[appName]
+	close(mailChan)
+
+	delete(appMailHTTPservers, appName)
+
 	if handle, ok := workerTable[appName]; ok {
 		logging.Infof("Sending %s workerTable dump: %#v",
 			appName, workerTable)
@@ -245,7 +258,6 @@ func startV8Debugger(w http.ResponseWriter, r *http.Request) {
 	go func(net.Listener) {
 		runtime.LockOSThread()
 		httpServer := createHTTPServer(v8TCPListener)
-		http.HandleFunc("/debug", v8DebugHandler)
 		server := http.Server{}
 		server.Serve(httpServer)
 		logging.Infof("Stopped V8 debuuger goroutine cleanly")
@@ -257,6 +269,69 @@ func startV8Debugger(w http.ResponseWriter, r *http.Request) {
 func stopV8Debugger(w http.ResponseWriter, r *http.Request) {
 	v8TCPListener.Close()
 	fmt.Fprintf(w, "Stopped V8 debugger thread\n")
+}
+
+func processMails(appName string) {
+	mailChan := appMailChanMapping[appName]
+
+	smtpServer := appMailSettings[appName]["smtpServer"]
+	smtpPort := appMailSettings[appName]["smtpPort"]
+	senderMailID := appMailSettings[appName]["senderMailID"]
+	mailPassword := appMailSettings[appName]["password"]
+
+	serverPort := fmt.Sprintf("%s:%s", smtpServer, smtpPort)
+
+	for {
+		select {
+		case sFields := <-mailChan:
+			msg := "From: " + senderMailID + "\n" +
+				"To: " + sFields.To + "\n" +
+				"Subject: " + sFields.Subject + "\n\n" +
+				sFields.Body
+
+			err := smtp.SendMail(
+				serverPort,
+				smtp.PlainAuth("",
+					senderMailID,
+					mailPassword,
+					smtpServer),
+				senderMailID,
+				[]string{sFields.To},
+				[]byte(msg))
+			if err != nil {
+				logging.Infof("Error: attempting to send mail, err: %s",
+					err.Error())
+			} else {
+				logging.Infof("Successfully sent mail")
+			}
+		}
+	}
+}
+
+func sendMail(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		logging.Infof("ERROR: Failed to read request body, err :%s",
+			err.Error())
+	}
+
+	fields := strings.Split(string(body), "&")
+	appName := strings.Split(fields[0], "=")[1]
+	mailTo := strings.Split(fields[1], "=")[1]
+	subject := strings.Split(fields[2], "=")[1]
+	mailBody := strings.Split(fields[3], "=")[1]
+
+	sFields := smtpFields{
+		To:      mailTo,
+		Subject: subject,
+		Body:    mailBody,
+	}
+
+	tableLock.Lock()
+	mailChan := appMailChanMapping[appName]
+	tableLock.Unlock()
+
+	mailChan <- sFields
 }
 
 func v8DebugHandler(w http.ResponseWriter, r *http.Request) {

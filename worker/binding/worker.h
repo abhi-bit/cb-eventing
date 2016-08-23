@@ -102,13 +102,13 @@ class Worker {
 
     lcb_t cb_instance;
     string script_to_execute_;
+    int table_index;
+    string app_name_;
 
   private:
     bool ExecuteScript(Local<String> script);
 
     int x;
-    int table_index;
-    string app_name_;
 
     ArrayBufferAllocator allocator;
     Isolate* isolate_;

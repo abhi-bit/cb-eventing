@@ -11,7 +11,7 @@ SOURCE_FILES=worker/binding/bucket.cc worker/binding/http_response.cc \
 OBJECT_FILES=bucket.o http_response.o n1ql.o parse_deployment.o queue.o worker.o
 
 INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/usr/local/include/hiredis
-LDFLAGS=-dynamiclib -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase -ljemalloc -lhiredis
+LDFLAGS=-dynamiclib -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase -ljemalloc -lhiredis -lcurl
 V8_BINDING_LIB=libv8_binding.dylib
 
 binding:

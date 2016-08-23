@@ -40,8 +40,8 @@ static void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     result->status = resp->rc;
     result->cas = resp->cas;
 
-    cerr << "LCB_STORE callback " << lcb_strerror(instance, result->status)
-         << " cas " << resp->cas << endl;
+    // cerr << "LCB_STORE callback " << lcb_strerror(instance, result->status)
+    //     << " cas " << resp->cas << endl;
 }
 
 // convert Little endian unsigned int64 to Big endian notation
@@ -141,7 +141,7 @@ bool Bucket::InstallMaps(map<string, string>* bucket) {
 
   Local<Context> context = Local<Context>::New(GetIsolate(), context_);
 
-  cout << "Registering handler for bucket_alias: " << bucket_alias.c_str() << endl;
+  // cout << "Registering handler for bucket_alias: " << bucket_alias.c_str() << endl;
   // Set the options object as a property on the global object.
   context->Global()
       ->Set(context,
@@ -171,7 +171,7 @@ void Bucket::BucketGet(Local<Name> name,
   lcb_sched_leave(*bucket_lcb_obj_ptr);
   lcb_wait(*bucket_lcb_obj_ptr);
 
-  cout << "GET call result Key: " << key << " VALUE: " << result.value << endl;
+  // cout << "GET call result Key: " << key << " VALUE: " << result.value << endl;
   const string& value = result.value;
   info.GetReturnValue().Set(
       v8::JSON::Parse(String::NewFromUtf8(info.GetIsolate(), value.c_str(),
@@ -186,7 +186,7 @@ void Bucket::BucketSet(Local<Name> name, Local<Value> value_obj,
   string key = ObjectToString(Local<String>::Cast(name));
   string value = ToString(info.GetIsolate(), value_obj);
 
-  cout << "Set call KEY: " << key << " VALUE: " << value << endl;
+  // cout << "Set call KEY: " << key << " VALUE: " << value << endl;
 
   lcb_t* bucket_lcb_obj_ptr = UnwrapLcbInstance(info.Holder());
   lcb_t* cb_instance = UnwrapWorkerLcbInstance(info.Holder());

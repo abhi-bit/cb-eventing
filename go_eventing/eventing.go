@@ -25,6 +25,10 @@ var appSetup chan string
 var appServerWG sync.WaitGroup
 var workerWG sync.WaitGroup
 var appHTTPservers map[string][]*HTTPServer
+var appMailHTTPservers map[string]*HTTPServer
+
+var appMailChanMapping map[string]chan smtpFields
+var appMailSettings map[string]map[string]string
 
 type staticAssetInfo struct {
 	appName string
@@ -44,6 +48,12 @@ type v8handleBucketConfig struct {
 	bucket *couchbase.Bucket
 	handle *worker.Worker
 	hChans *handleChans
+}
+
+type smtpFields struct {
+	To      string
+	Subject string
+	Body    string
 }
 
 var appDoneChans map[string]handleChans
@@ -169,6 +179,71 @@ func performAppHTTPSetup(appName string) {
 	}
 }
 
+func setUpMailServer(appName string) {
+	mailChan := make(chan smtpFields, 10000)
+	smtpServer, smtpPort, senderMailID, mailPassword :=
+		getMailSettings(appName)
+
+	if smtpServer == "" || smtpPort == "" ||
+		senderMailID == "" || mailPassword == "" {
+		return
+	}
+
+	tableLock.Lock()
+	appMailChanMapping[appName] = mailChan
+	appMailSettings[appName] = make(map[string]string)
+	appMailSettings[appName]["smtpServer"] = smtpServer
+	appMailSettings[appName]["smtpPort"] = smtpPort
+	appMailSettings[appName]["senderMailID"] = senderMailID
+	appMailSettings[appName]["password"] = mailPassword
+	tableLock.Unlock()
+
+	tcpListener, err := net.Listen("tcp", "localhost:6063")
+	if err != nil {
+		logging.Errorf("Regexp http server error: %s", err.Error())
+	}
+	httpServer := createHTTPServer(tcpListener)
+
+	tableLock.Lock()
+	appMailHTTPservers[appName] = httpServer
+	tableLock.Unlock()
+
+	regexpHandler := &RegexpHandler{}
+	regexpHandler.HandleFunc(regexp.MustCompile("/sendmail/*"), sendMail)
+
+	go func(httpServer *HTTPServer,
+		regexpHandler *RegexpHandler,
+		appName string) {
+		logging.Infof("Started up http server to handle mail")
+		go processMails(appName)
+		http.Serve(httpServer, regexpHandler)
+		logging.Infof("Cleanly stopped mail http server")
+	}(httpServer, regexpHandler, appName)
+}
+
+func getMailSettings(appName string) (string, string, string, string) {
+	logging.Infof("Reading mail configs for app: %s \n", appName)
+
+	appData, err := ioutil.ReadFile("./apps/" + appName)
+	if err == nil {
+		var app application
+		err := json.Unmarshal(appData, &app)
+		if err != nil {
+			logging.Infof("Failed parse application data for app: %s", appName)
+		}
+
+		config := app.DeploymentConfig.(map[string]interface{})
+		mailSettings := config["mail_settings"].(map[string]interface{})
+
+		smtpServer := mailSettings["smtp_server"].(string)
+		smtpPort := mailSettings["smtp_port"].(string)
+		senderMailID := mailSettings["sender_mail_id"].(string)
+		mailPassword := mailSettings["password"].(string)
+		return smtpServer, smtpPort, senderMailID, mailPassword
+	}
+	return "", "", "", ""
+}
+
 func getSource(appName string) (string, string, string) {
 	logging.Infof("Reading config for app: %s \n", appName)
 
@@ -272,9 +347,14 @@ func main() {
 	workerChannel = make(chan *worker.Worker, 100)
 	timerEventWorkerChannel = make(chan v8handleBucketConfig, 100)
 
+	appMailChanMapping = make(map[string]chan smtpFields)
+	appMailSettings = make(map[string]map[string]string)
+
 	appDoneChans = make(map[string]handleChans)
 	uriPrefixAppMap = make(map[string]*staticAssetInfo)
 	uriPrefixAppnameBackIndex = make(map[string]string)
+
+	appMailHTTPservers = make(map[string]*HTTPServer)
 
 	argParse()
 	files, _ := ioutil.ReadDir("./apps/")
@@ -310,6 +390,7 @@ func main() {
 		select {
 		case appName := <-appSetup:
 			go performAppHTTPSetup(appName)
+			go setUpMailServer(appName)
 			logging.Infof("Got message to load app: %s", appName)
 		}
 	}

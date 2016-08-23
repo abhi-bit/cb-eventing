@@ -32,12 +32,6 @@ Queue::Queue(Worker* w,
   endpoint.erase(0, endpoint.find(delimiter) + delimiter.length());
   std::string port = endpoint.substr(0, endpoint.find(delimiter));
 
-  std::cout << "QUEUE:: provider: " << provider
-            << " queue_name: " << queue_name
-            << " hostname: " << hostname
-            << " port: " << port
-            << " queue_alias: " << queue_alias << std::endl;
-
   // Setting up redis connection handle
   struct timeval timeout = { 1, 500000 };
   c = redisConnectWithTimeout(hostname.c_str(), std::stoi(port), timeout);
@@ -118,8 +112,8 @@ bool Queue::InstallQueueMaps(map<string, string> *queue) {
 
   Local<Context> context = Local<Context>::New(GetIsolate(), context_);
 
-  cout << "Registering handler for queue_alias: "
-       << queue_alias.c_str() << endl;
+  // cout << "Registering handler for queue_alias: "
+  //     << queue_alias.c_str() << endl;
   // Set the options object as a property on the global object.
 
   context->Global()
@@ -154,8 +148,6 @@ void Queue::QueueGetCall(Local<Name> name,
 
   redisContext* redis_context = UnwrapRedisContext(info.Holder());
   string qname(UnwrapQueueName(info.Holder()));
-
-  cerr << "ABHI: RedisPush " << doc.c_str() << endl;
 
   // TODO: Why is `16` showing up in buffer when const char* is fetched
   // from isolate heap

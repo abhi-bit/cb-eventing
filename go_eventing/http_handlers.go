@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"runtime"
 	"strings"
 
 	"github.com/couchbase/indexing/secondary/logging"
 )
+
+var v8TCPListener net.Listener
 
 type httpRequest struct {
 	Path   string            `json:"path"`
@@ -226,6 +230,33 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 		appSetup <- appName
 	}
 	fmt.Fprintf(w, "Stored application config to disk\n")
+}
+
+func startV8Debugger(w http.ResponseWriter, r *http.Request) {
+	var err error
+	v8TCPListener, err = net.Listen("tcp", ":6062")
+	if err != nil {
+		logging.Infof("Failed to start v8 debug thread, err: %s",
+			err.Error())
+		fmt.Fprintf(w, "Failed to start V8 debugger thread\n")
+		return
+	}
+
+	go func(net.Listener) {
+		runtime.LockOSThread()
+		httpServer := createHTTPServer(v8TCPListener)
+		http.HandleFunc("/debug", v8DebugHandler)
+		server := http.Server{}
+		server.Serve(httpServer)
+		logging.Infof("Stopped V8 debuuger goroutine cleanly")
+	}(v8TCPListener)
+
+	fmt.Fprintf(w, "Started V8 debugger thread\n")
+}
+
+func stopV8Debugger(w http.ResponseWriter, r *http.Request) {
+	v8TCPListener.Close()
+	fmt.Fprintf(w, "Stopped V8 debugger thread\n")
 }
 
 func v8DebugHandler(w http.ResponseWriter, r *http.Request) {

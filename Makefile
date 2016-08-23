@@ -30,4 +30,4 @@ run:
 	DYLD_LIBRARY_PATH=$(DYLD_LIBRARY_PATH) ./go_eventing -auth "Administrator:asdasd" -info -stats=1000000
 
 clean:
-	rm -rf $(OBJECT_FILES)
+	rm -rf $(OBJECT_FILES) go_eventing/go_eventing

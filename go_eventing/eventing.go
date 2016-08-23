@@ -129,7 +129,6 @@ func performAppHTTPSetup(appName string) {
 				serverPortCombo, serverURIRegexp)
 
 			tableLock.Lock()
-			defer tableLock.Unlock()
 			if _, ok := appHTTPservers[appName]; ok {
 				appHTTPservers[appName] = append(
 					appHTTPservers[appName],
@@ -139,6 +138,7 @@ func performAppHTTPSetup(appName string) {
 				appHTTPservers[appName] = make([]*HTTPServer, 1)
 				appHTTPservers[appName][0] = httpServer
 			}
+			tableLock.Unlock()
 
 			_, metaBucket, srcEndpoint := getSource(appName)
 			connStr := "http://" + srcEndpoint + ":8091"
@@ -153,13 +153,15 @@ func performAppHTTPSetup(appName string) {
 			}
 
 			path := strings.Split(URIPath, "/")[1]
+			tableLock.Lock()
 			uriPrefixAppMap[path] = info
 			uriPrefixAppnameBackIndex[appName] = path
+			tableLock.Unlock()
 
 			go func(httpServer *HTTPServer,
 				regexpHandler *RegexpHandler) {
 				defer appServerWG.Done()
-				logging.Tracef("HTTPServer started up")
+				logging.Infof("HTTPServer started up")
 				http.Serve(httpServer, regexpHandler)
 				logging.Infof("HTTPServer cleanly closed")
 			}(httpServer, regexpHandler)
@@ -287,7 +289,8 @@ func main() {
 		http.Handle("/", fs)
 		http.HandleFunc("/get_application/", fetchAppSetup)
 		http.HandleFunc("/set_application/", storeAppSetup)
-		http.HandleFunc("/debug", v8DebugHandler)
+		http.HandleFunc("/start_dbg/", startV8Debugger)
+		http.HandleFunc("/stop_dbg/", stopV8Debugger)
 
 		log.Fatal(http.ListenAndServe("localhost:6061", nil))
 	}()

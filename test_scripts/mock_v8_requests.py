@@ -119,7 +119,7 @@ def fire_setbreakpoint_request(seq):
     command["arguments"] = dict()
     command["arguments"]["type"] = "function"
     command["arguments"]["target"] = "OnUpdate"
-    command["arguments"]["line"] = 2
+    command["arguments"]["line"] = 1
 
     command_to_fire = json.dumps(command)
     query_params = {"command": "setbreakpoint", "appname": "credit_score"}
@@ -162,15 +162,15 @@ def fire_listbreakpoints_request(seq):
 
 def main():
     seq = randint(100, 1000)
-    # fire_continue_request(seq)
+    fire_continue_request(seq)
     # fire_evaluate_request(seq + 1)
     # fire_lookup_request(seq + 2)
     # fire_backtrace_request(seq + 3)
     # fire_frame_request(seq + 4)
     # fire_source_request(seq + 5)
     # fire_setbreakpoint_request(seq + 6)
-    fire_clearbreakpoint_request(seq + 7)
-    fire_listbreakpoints_request(seq + 8)
+    # fire_clearbreakpoint_request(seq + 7)
+    # fire_listbreakpoints_request(seq + 8)
 
 if __name__ == "__main__":
     main()

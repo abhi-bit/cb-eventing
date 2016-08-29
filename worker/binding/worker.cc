@@ -478,7 +478,7 @@ void PostMail(char* app_name, char* to, char* subject, char* body) {
 
   curl = curl_easy_init();
   if (curl) {
-    curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:6063/sendmail/");
+    curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:6061/sendmail/");
     char buf[1000];
     sprintf(buf, "app_name=%s&to=%s&subject=%s&body=%s",
             app_name, to, subject, body);

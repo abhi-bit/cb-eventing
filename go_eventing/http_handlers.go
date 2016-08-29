@@ -215,13 +215,9 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(appHTTPservers, appName)
 
-	httpServer := appMailHTTPservers[appName]
-	httpServer.Listener.Close()
-
-	mailChan := appMailChanMapping[appName]
-	close(mailChan)
-
-	delete(appMailHTTPservers, appName)
+	if mailChan, ok := appMailChanMapping[appName]; ok {
+		close(mailChan)
+	}
 
 	if handle, ok := workerTable[appName]; ok {
 		logging.Infof("Sending %s workerTable dump: %#v",
@@ -272,12 +268,14 @@ func stopV8Debugger(w http.ResponseWriter, r *http.Request) {
 }
 
 func processMails(appName string) {
+	tableLock.Lock()
 	mailChan := appMailChanMapping[appName]
 
 	smtpServer := appMailSettings[appName]["smtpServer"]
 	smtpPort := appMailSettings[appName]["smtpPort"]
 	senderMailID := appMailSettings[appName]["senderMailID"]
 	mailPassword := appMailSettings[appName]["password"]
+	tableLock.Unlock()
 
 	serverPort := fmt.Sprintf("%s:%s", smtpServer, smtpPort)
 

@@ -25,7 +25,6 @@ var appSetup chan string
 var appServerWG sync.WaitGroup
 var workerWG sync.WaitGroup
 var appHTTPservers map[string][]*HTTPServer
-var appMailHTTPservers map[string]*HTTPServer
 
 var appMailChanMapping map[string]chan smtpFields
 var appMailSettings map[string]map[string]string
@@ -62,13 +61,13 @@ func argParse() {
 
 	flag.IntVar(&options.maxVbno, "maxvb", 1024,
 		"maximum number of vbuckets")
-	flag.IntVar(&options.stats, "stats", 1000,
+	flag.IntVar(&options.stats, "stats", 100000,
 		"periodic timeout in mS, to print statistics, `0` will disable stats")
 	flag.BoolVar(&options.printflogs, "flogs", false,
 		"display failover logs")
-	flag.StringVar(&options.auth, "auth", "",
+	flag.StringVar(&options.auth, "auth", "Administrator:asdasd",
 		"Auth user and password")
-	flag.BoolVar(&options.info, "info", false,
+	flag.BoolVar(&options.info, "info", true,
 		"display informational logs")
 	flag.BoolVar(&options.debug, "debug", false,
 		"display debug logs")
@@ -89,6 +88,8 @@ func argParse() {
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage : %s [OPTIONS] <cluster-addr> \n",
 		os.Args[0])
+	fmt.Fprintf(os.Stderr, "Supplied command: %s \n",
+		os.Args)
 	flag.PrintDefaults()
 }
 
@@ -190,35 +191,13 @@ func setUpMailServer(appName string) {
 	}
 
 	tableLock.Lock()
+	defer tableLock.Unlock()
 	appMailChanMapping[appName] = mailChan
 	appMailSettings[appName] = make(map[string]string)
 	appMailSettings[appName]["smtpServer"] = smtpServer
 	appMailSettings[appName]["smtpPort"] = smtpPort
 	appMailSettings[appName]["senderMailID"] = senderMailID
 	appMailSettings[appName]["password"] = mailPassword
-	tableLock.Unlock()
-
-	tcpListener, err := net.Listen("tcp", "localhost:6063")
-	if err != nil {
-		logging.Errorf("Regexp http server error: %s", err.Error())
-	}
-	httpServer := createHTTPServer(tcpListener)
-
-	tableLock.Lock()
-	appMailHTTPservers[appName] = httpServer
-	tableLock.Unlock()
-
-	regexpHandler := &RegexpHandler{}
-	regexpHandler.HandleFunc(regexp.MustCompile("/sendmail/*"), sendMail)
-
-	go func(httpServer *HTTPServer,
-		regexpHandler *RegexpHandler,
-		appName string) {
-		logging.Infof("Started up http server to handle mail")
-		go processMails(appName)
-		http.Serve(httpServer, regexpHandler)
-		logging.Infof("Cleanly stopped mail http server")
-	}(httpServer, regexpHandler, appName)
 }
 
 func getMailSettings(appName string) (string, string, string, string) {
@@ -354,8 +333,6 @@ func main() {
 	uriPrefixAppMap = make(map[string]*staticAssetInfo)
 	uriPrefixAppnameBackIndex = make(map[string]string)
 
-	appMailHTTPservers = make(map[string]*HTTPServer)
-
 	argParse()
 	files, _ := ioutil.ReadDir("./apps/")
 	for _, file := range files {
@@ -371,10 +348,13 @@ func main() {
 		http.HandleFunc("/set_application/", storeAppSetup)
 		http.HandleFunc("/start_dbg/", startV8Debugger)
 		http.HandleFunc("/stop_dbg/", stopV8Debugger)
+		http.HandleFunc("/sendmail/", sendMail)
 
 		log.Fatal(http.ListenAndServe("localhost:6061", nil))
 	}()
 
+	pwd, _ := os.Getwd()
+	logging.Infof("ABHI: Current working dir: %s", pwd)
 	files, err := ioutil.ReadDir("./apps/")
 	if err != nil {
 		logging.Infof("Failed to read application directory, is it missing?\n")
@@ -390,7 +370,8 @@ func main() {
 		select {
 		case appName := <-appSetup:
 			go performAppHTTPSetup(appName)
-			go setUpMailServer(appName)
+			setUpMailServer(appName)
+			go processMails(appName)
 			logging.Infof("Got message to load app: %s", appName)
 		}
 	}

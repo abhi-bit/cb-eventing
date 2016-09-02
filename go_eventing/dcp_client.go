@@ -74,7 +74,18 @@ func startBucket(cluster, bucketn string,
 	vbnos := listOfVbnos(options.maxVbno)
 
 	flogs, err := b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
-	mf(err, "- dcp failoverlogs")
+	sleep = 1
+	for err != nil {
+		logging.Infof("Unable to get DCP Failover logs, retrying after %d seconds\n",
+			sleep)
+		time.Sleep(time.Second * sleep)
+
+		flogs, err = b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
+
+		if sleep < 8 {
+			sleep = sleep * 2
+		}
+	}
 
 	if options.printflogs {
 		printFlogs(vbnos, flogs)

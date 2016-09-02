@@ -1,9 +1,11 @@
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <curl/curl.h>
 #include <regex>
 #include <sstream>
+#include <thread>
 #include <typeinfo>
 
 #include <rapidjson/document.h>
@@ -117,6 +119,7 @@ static void DebugSetBreakpointHandler(const v8::Debug::Message& message) {
   v8::Local<v8::String> json = message.GetJSON();
   v8::String::Utf8Value utf8(json);
 
+  std::cout << __LINE__ << __FUNCTION__ << *utf8 << std::endl;
   SetBreakpointResult(*utf8);
 }
 
@@ -991,6 +994,8 @@ const char* Worker::SendContinueRequest(const char* command) {
   Debug::SetMessageHandler(GetIsolate(), DebugContinueHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::cout << "Continue Result: " << continue_result << std::endl;
   return continue_result.c_str();
 }
 
@@ -1001,6 +1006,8 @@ const char* Worker::SendEvaluateRequest(const char* command) {
   Debug::SetMessageHandler(GetIsolate(), DebugEvaluateHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::cout << "SendEvaluate Result: " << evaluate_result << std::endl;
   return evaluate_result.c_str();
 }
 
@@ -1027,6 +1034,8 @@ const char* Worker::SendSetBreakpointRequest(const char* command) {
   Debug::SetMessageHandler(GetIsolate(), DebugSetBreakpointHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::cout << "SetBreakPoint Result: " << set_breakpoint_result << std::endl;
   return set_breakpoint_result.c_str();
 }
 
@@ -1037,6 +1046,8 @@ const char* Worker::SendClearBreakpointRequest(const char* command) {
   Debug::SetMessageHandler(GetIsolate(), DebugClearBreakpointHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::cout << "ClearBreakpoint Result: " << clear_breakpoint_result << std::endl;
   return clear_breakpoint_result.c_str();
 }
 
@@ -1047,6 +1058,8 @@ const char* Worker::SendListBreakpointsRequest(const char* command) {
   Debug::SetMessageHandler(GetIsolate(), DebugListBreakpointHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::cout << "ListBreakpoint Result: " << list_breakpoint_result << std::endl;
   return list_breakpoint_result.c_str();
 }
 

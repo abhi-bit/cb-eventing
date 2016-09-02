@@ -2,7 +2,7 @@ import json
 from random import randint
 import requests
 
-v8_debug_endpoint = "http://localhost:6062/debug"
+v8_debug_endpoint = "http://localhost:6061/v8debug/"
 
 
 def fire_continue_request(seq):

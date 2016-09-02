@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -331,16 +332,41 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 
 	mailChan <- sFields
 }
+func forwardDebugCommand(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	body, _ := ioutil.ReadAll(r.Body)
+	command := values["command"][0]
+	appName := values["appname"][0]
+
+	url := "http://localhost:6062/debug?appname=" + appName + "&command=" + command
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		logging.Infof("Failed to forrward request to 6062")
+	} else {
+		logging.Infof("Successfully forwarded request to 6062")
+
+		body, _ := ioutil.ReadAll(resp.Body)
+		logging.Infof("forwarded response body: %s", string(body))
+		resp.Body.Close()
+	}
+}
 
 func v8DebugHandler(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	command := values["command"][0]
 	appName := values["appname"][0]
 
+	logging.Infof("Forwaded request command: %s appName: %s",
+		command, appName)
 	if handle, ok := workerTable[appName]; ok {
 		p := make([]byte, r.ContentLength)
 		r.Body.Read(p)
 		payload := string(p)
+		logging.Infof("Forwaded payload: %s", payload)
 		var response string
 		switch command {
 		case "continue":
@@ -362,7 +388,7 @@ func v8DebugHandler(w http.ResponseWriter, r *http.Request) {
 		case "listbreakpoints":
 			response = handle.SendListBreakpoints(payload)
 		}
-		fmt.Fprintf(w, "%s", response)
+		fmt.Fprintf(w, "V8 Debugger: %s", response)
 	} else {
 		fmt.Fprintf(w, "Application missing")
 		return

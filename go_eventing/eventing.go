@@ -349,6 +349,7 @@ func main() {
 		http.HandleFunc("/start_dbg/", startV8Debugger)
 		http.HandleFunc("/stop_dbg/", stopV8Debugger)
 		http.HandleFunc("/sendmail/", sendMail)
+		http.HandleFunc("/v8debug/", forwardDebugCommand)
 
 		log.Fatal(http.ListenAndServe("localhost:6061", nil))
 	}()

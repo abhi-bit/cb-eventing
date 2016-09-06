@@ -60,7 +60,7 @@ ENDIF ()
 GoInstall (TARGET go_eventing PACKAGE github.com/abhi-bit/eventing/go_eventing
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.." "${GODEPSDIR}"
   DEPENDS v8_binding
-  CGO_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/lib -lv8_binding"
+  CGO_LIBRARY_DIRS "${CMAKE_CURRENT_BINARY_DIR} -lv8_binding"
   LDFLAGS "${_eventing_ldflags}"
   INSTALL_PATH bin OUTPUT go_eventing
   GOVERSION 1.4.x)

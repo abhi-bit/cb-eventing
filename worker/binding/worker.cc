@@ -1,8 +1,11 @@
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <curl/curl.h>
+#include <mutex>
 #include <regex>
 #include <sstream>
 #include <thread>
@@ -42,6 +45,10 @@ string set_breakpoint_result;
 string clear_breakpoint_result;
 string list_breakpoint_result;
 
+std::condition_variable cv;
+std::mutex debug_cv_m;
+std::atomic_bool data_ready(false);
+
 // Copies a C string to a 16-bit string.  Does not check for buffer overflow.
 // Does not use the V8 engine to convert strings, so it can be used
 // in any thread.  Returns the length of the string.
@@ -59,17 +66,20 @@ bool GetEvaluateResult(char* message, string &buffer) {
   if (strstr(message, "\"command\":\"evaluate\"") == NULL) {
     return false;
   }
-  if (strstr(message, "\"text\":\"") == NULL) {
+  if (strstr(message, "\"text\":\"") != NULL) {
+    buffer.assign(message);
     return false;
   }
-  cout << __FUNCTION__ << " Message dump: " << message << endl;
 
   string msg(message);
   rapidjson::Document doc;
   if (doc.Parse(msg.c_str()).HasParseError()) {
+      buffer.assign(message);
       cerr << "Failed to parse v8 debug JSON response" << endl;
+      return false;
   }
 
+  std::cout << __LINE__ << __FUNCTION__ << "MESSAGE: " << message << std::endl;
   assert(doc.IsObject());
   string result;
   {
@@ -77,6 +87,8 @@ bool GetEvaluateResult(char* message, string &buffer) {
       result.assign(value.GetString());
   }
   buffer.assign(result);
+  data_ready = true;
+  cv.notify_all();
   return true;
 }
 
@@ -89,19 +101,23 @@ static void DebugEvaluateHandler(const v8::Debug::Message& message) {
 
 bool SetBreakpointResult(char* message) {
   if (strstr(message, "\"command\":\"setbreakpoint\"") == NULL) {
+    set_breakpoint_result.assign(message);
     return false;
   }
-  if (strstr(message, "\"type\":\"") == NULL) {
+  if (strstr(message, "\"type\":\"") != NULL) {
+    set_breakpoint_result.assign(message);
     return false;
   }
-  cout << __FUNCTION__ << " Message dump: " << message << endl;
 
   string msg(message);
   rapidjson::Document doc;
   if (doc.Parse(msg.c_str()).HasParseError()) {
-      cerr << "Failed to parse v8 debug JSON response" << endl;
+    set_breakpoint_result.assign(message);
+    cerr << "Failed to parse v8 debug JSON response" << endl;
+    return false;
   }
 
+  std::cout << __LINE__ << __FUNCTION__ << "MESSAGE: " << message << std::endl;
   assert(doc.IsObject());
   {
       rapidjson::Value& line = doc["body"]["line"];
@@ -112,6 +128,8 @@ bool SetBreakpointResult(char* message) {
       sprintf(buf, "%d:%d", line.GetInt(), column.GetInt());
       set_breakpoint_result.assign(buf);
   }
+  data_ready = true;
+  cv.notify_all();
   return true;
 }
 
@@ -119,32 +137,44 @@ static void DebugSetBreakpointHandler(const v8::Debug::Message& message) {
   v8::Local<v8::String> json = message.GetJSON();
   v8::String::Utf8Value utf8(json);
 
-  std::cout << __LINE__ << __FUNCTION__ << *utf8 << std::endl;
   SetBreakpointResult(*utf8);
 }
 
 void ContinueResult(char* message) {
-  if (strstr(message, "\"command\":\"continue\"") == NULL) {
+  if (strstr(message, "\"command\":\"continue\"") != NULL) {
+    continue_result.assign(message);
     return;
   }
-  cout << __FUNCTION__ << " Message dump: " << message << endl;
 
   string msg(message);
   rapidjson::Document doc;
   if (doc.Parse(msg.c_str()).HasParseError()) {
-      cerr << "Failed to parse v8 debug JSON response" << endl;
+    continue_result.assign(message);
+    cerr << "Failed to parse v8 debug JSON response" << endl;
+    return;
   }
 
+  std::cout << __LINE__ << __FUNCTION__ << "MESSAGE: " << message << std::endl;
   assert(doc.IsObject());
-  {
-      rapidjson::Value& request_seq = doc["request_seq"];
-      char buf[20];
-      // TODO: more error checking or using a safe wrapper on top of
-      // standard sprintf
-      sprintf(buf, "request_seq: %d", request_seq.GetInt());
-      continue_result.assign(buf);
+  if (strstr(message, "\"sourceLine\"") != NULL) {
+      {
+          rapidjson::Value& sourceLine = doc["body"]["sourceLine"];
+          rapidjson::Value& sourceColumn = doc["body"]["sourceColumn"];
+          rapidjson::Value& sourceLineText = doc["body"]["sourceLineText"];
+
+          char buf[100];
+          sprintf(buf, "line:%d column: %d text: %s",
+              sourceLine.GetInt(), sourceColumn.GetInt(),
+              sourceLineText.GetString());
+          continue_result.assign(buf);
+          std::cout << __FUNCTION__ << __LINE__ << continue_result << std::endl;
+      }
+  } else {
+      continue_result.assign(message);
+      std::cout << __FUNCTION__ << __LINE__ << continue_result << std::endl;
   }
-  cout << __FUNCTION__ << __LINE__ << " " << continue_result << endl;
+  data_ready = true;
+  cv.notify_all();
 }
 
 static void DebugContinueHandler(const v8::Debug::Message& message) {
@@ -156,10 +186,11 @@ static void DebugContinueHandler(const v8::Debug::Message& message) {
 
 void ClearBreakpointResult(char* message) {
   if (strstr(message, "\"command\":\"clearbreakpoint\"") == NULL) {
+    clear_breakpoint_result.assign(message);
     return;
   }
-  cout << __FUNCTION__ << " Message dump: " << message << endl;
-  if (strstr(message, "\"message\":\"Error\"") == NULL) {
+
+  if (strstr(message, "\"message\":\"Error") != NULL) {
     // Sample error message
     /* {"seq":1,
      * "request_seq":239,
@@ -168,18 +199,22 @@ void ClearBreakpointResult(char* message) {
      * "success":false,
      * "message":"Error: Debugger: Invalid breakpoint",
      * "running":true}*/
+    clear_breakpoint_result.assign(message);
     return;
   }
 
   string msg(message);
   rapidjson::Document doc;
   if (doc.Parse(msg.c_str()).HasParseError()) {
+      clear_breakpoint_result.assign(message);
       cerr << "Failed to parse v8 debug JSON response" << endl;
+      return;
   }
 
+  std::cout << __LINE__ << __FUNCTION__ << "MESSAGE:" << msg << std::endl;
   assert(doc.IsObject());
   {
-      rapidjson::Value& type = doc["body"]["type"];
+      rapidjson::Value& type = doc["type"];
       rapidjson::Value& breakpoints_cleared = doc["body"]["breakpoint"];
       char buf[40];
       // TODO: more error checking or using a safe wrapper on top of
@@ -188,6 +223,8 @@ void ClearBreakpointResult(char* message) {
               type.GetString(), breakpoints_cleared.GetInt());
       clear_breakpoint_result.assign(buf);
   }
+  data_ready = true;
+  cv.notify_all();
   return;
 }
 
@@ -200,10 +237,12 @@ static void DebugClearBreakpointHandler(const v8::Debug::Message& message) {
 
 void ListBreakpointResult(char* message) {
   if (strstr(message, "\"command\":\"listbreakpoints\"") == NULL) {
+    list_breakpoint_result.assign(message);
     return;
   }
-  cout << __FUNCTION__ << " Message dump: " << message << endl;
-  if (strstr(message, "\"message\":\"Error\"") == NULL) {
+
+  if (strstr(message, "\"message\":\"Error") != NULL) {
+    std::cout << __LINE__ << __FUNCTION__ << __FILE__ << std::endl;
     // Sample error message
     /* {"seq":1,
      * "request_seq":239,
@@ -212,19 +251,24 @@ void ListBreakpointResult(char* message) {
      * "success":false,
      * "message":"Error: Debugger: Invalid breakpoint",
      * "running":true}*/
+    list_breakpoint_result.assign(message);
     return;
   }
 
   string msg(message);
   rapidjson::Document doc;
   if (doc.Parse(msg.c_str()).HasParseError()) {
+      list_breakpoint_result.assign(message);
       cerr << "Failed to parse v8 debug JSON response" << endl;
+      return;
   }
 
+  std::cout << __LINE__ << __FUNCTION__ << "MESSAGE: " << message << std::endl;
   assert(doc.IsObject());
-
   list_breakpoint_result.assign(message);
 
+  data_ready = true;
+  cv.notify_all();
   return;
 }
 
@@ -249,7 +293,7 @@ static void op_get_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) 
                 reinterpret_cast<const char*>(resp->value),
                 resp->nvalue);
     } else {
-        cerr << "lcb get failed with error " << lcb_strerror(instance, resp->rc) << endl;
+        // cerr << "lcb get failed with error " << lcb_strerror(instance, resp->rc) << endl;
     }
 }
 
@@ -940,50 +984,53 @@ const char* Worker::SendHTTPPost(const char* http_req) {
 }
 
 void Worker::SendTimerCallback(const char* k) {
-  Locker locker(GetIsolate());
-  Isolate::Scope isolate_scope(GetIsolate());
-  HandleScope handle_scope(GetIsolate());
-
-  Local<Context> context = Local<Context>::New(GetIsolate(), context_);
-  Context::Scope context_scope(context);
-
   vector<string> keys = split(k, ';');
 
-  for (auto key : keys) {
-    Result result;
-    lcb_CMDGET gcmd = { 0 };
-    LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
-    lcb_sched_enter(cb_instance);
-    lcb_get3(cb_instance, &result, &gcmd);
-    lcb_sched_leave(cb_instance);
-    lcb_wait(cb_instance);
+  if (keys.size() > 0) {
+    Locker locker(GetIsolate());
+    Isolate::Scope isolate_scope(GetIsolate());
+    HandleScope handle_scope(GetIsolate());
 
-    rapidjson::Document doc;
-    if (doc.Parse(result.value.c_str()).HasParseError()) {
-        return;
+    Local<Context> context = Local<Context>::New(GetIsolate(), context_);
+    Context::Scope context_scope(context);
+
+    for (auto key : keys) {
+      Result result;
+      lcb_CMDGET gcmd = { 0 };
+      LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
+      lcb_sched_enter(cb_instance);
+      lcb_get3(cb_instance, &result, &gcmd);
+      lcb_sched_leave(cb_instance);
+      lcb_wait(cb_instance);
+
+      rapidjson::Document doc;
+      if (doc.Parse(result.value.c_str()).HasParseError()) {
+          return;
+      }
+
+      string callback_func, doc_id, start_timestamp;
+      std::cout << __LINE__ << __FUNCTION__ << std::endl;
+      assert(doc.IsObject());
+      {
+          rapidjson::Value& cf = doc["callback_func"];
+          rapidjson::Value& id = doc["doc_id"];
+          rapidjson::Value& sts = doc["start_timestamp"];
+
+          callback_func.assign(cf.GetString());
+          doc_id.assign(id.GetString());
+          start_timestamp.assign(sts.GetString());
+      }
+
+      // TODO: check for anonymous JS functions. Disallow them completely
+      Handle<Value> val = context->Global()->Get(
+              createUtf8String(GetIsolate(), callback_func.c_str()));
+      Handle<Function> cb_func = Handle<Function>::Cast(val);
+
+      Handle<Value> arg[1];
+      arg[0] = String::NewFromUtf8(GetIsolate(), doc_id.c_str());
+
+      cb_func->Call(context->Global(), 1, arg);
     }
-
-    string callback_func, doc_id, start_timestamp;
-    assert(doc.IsObject());
-    {
-        rapidjson::Value& cf = doc["callback_func"];
-        rapidjson::Value& id = doc["doc_id"];
-        rapidjson::Value& sts = doc["start_timestamp"];
-
-        callback_func.assign(cf.GetString());
-        doc_id.assign(id.GetString());
-        start_timestamp.assign(sts.GetString());
-    }
-
-    // TODO: check for anonymous JS functions. Disallow them completely
-    Handle<Value> val = context->Global()->Get(
-            createUtf8String(GetIsolate(), callback_func.c_str()));
-    Handle<Function> cb_func = Handle<Function>::Cast(val);
-
-    Handle<Value> arg[1];
-    arg[0] = String::NewFromUtf8(GetIsolate(), doc_id.c_str());
-
-    cb_func->Call(context->Global(), 1, arg);
   }
 }
 
@@ -991,11 +1038,12 @@ const char* Worker::SendContinueRequest(const char* command) {
   const int kBufferSize = 1000;
   uint16_t buffer[kBufferSize];
 
+  std::unique_lock<std::mutex> lk(debug_cv_m);
+  data_ready = false;
   Debug::SetMessageHandler(GetIsolate(), DebugContinueHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  std::cout << "Continue Result: " << continue_result << std::endl;
+  cv.wait(lk, []{return data_ready.load();});
   return continue_result.c_str();
 }
 
@@ -1003,11 +1051,12 @@ const char* Worker::SendEvaluateRequest(const char* command) {
   const int kBufferSize = 1000;
   uint16_t buffer[kBufferSize];
 
+  std::unique_lock<std::mutex> lk(debug_cv_m);
+  data_ready = false;
   Debug::SetMessageHandler(GetIsolate(), DebugEvaluateHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  std::cout << "SendEvaluate Result: " << evaluate_result << std::endl;
+  cv.wait(lk, []{return data_ready.load();});
   return evaluate_result.c_str();
 }
 
@@ -1031,11 +1080,12 @@ const char* Worker::SendSetBreakpointRequest(const char* command) {
   const int kBufferSize = 1000;
   uint16_t buffer[kBufferSize];
 
+  std::unique_lock<std::mutex> lk(debug_cv_m);
+  data_ready = false;
   Debug::SetMessageHandler(GetIsolate(), DebugSetBreakpointHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  std::cout << "SetBreakPoint Result: " << set_breakpoint_result << std::endl;
+  cv.wait(lk, []{return data_ready.load();});
   return set_breakpoint_result.c_str();
 }
 
@@ -1043,11 +1093,12 @@ const char* Worker::SendClearBreakpointRequest(const char* command) {
   const int kBufferSize = 1000;
   uint16_t buffer[kBufferSize];
 
+  std::unique_lock<std::mutex> lk(debug_cv_m);
+  data_ready = false;
   Debug::SetMessageHandler(GetIsolate(), DebugClearBreakpointHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  std::cout << "ClearBreakpoint Result: " << clear_breakpoint_result << std::endl;
+  cv.wait(lk, []{return data_ready.load();});
   return clear_breakpoint_result.c_str();
 }
 
@@ -1055,11 +1106,12 @@ const char* Worker::SendListBreakpointsRequest(const char* command) {
   const int kBufferSize = 1000;
   uint16_t buffer[kBufferSize];
 
+  std::unique_lock<std::mutex> lk(debug_cv_m);
+  data_ready = false;
   Debug::SetMessageHandler(GetIsolate(), DebugListBreakpointHandler);
   Debug::SendCommand(GetIsolate(), buffer, AsciiToUtf16(command, buffer));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  std::cout << "ListBreakpoint Result: " << list_breakpoint_result << std::endl;
+  cv.wait(lk, []{return data_ready.load();});
   return list_breakpoint_result.c_str();
 }
 
@@ -1095,6 +1147,9 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
   on_doc_update->Call(context->Global(), 2, args);
   Debug::ProcessDebugMessages(GetIsolate());
 
+  data_ready = true;
+  cv.notify_all();
+
   if (try_catch.HasCaught()) {
     cout << "Exception message: "
          <<  ExceptionString(GetIsolate(), &try_catch) << endl;
@@ -1122,6 +1177,9 @@ int Worker::SendDelete(const char *msg) {
   Local<Function> on_doc_delete = Local<Function>::New(GetIsolate(), on_delete_);
   on_doc_delete->Call(context->Global(), 1, args);
   Debug::ProcessDebugMessages(GetIsolate());
+
+  data_ready = true;
+  cv.notify_all();
 
   if (try_catch.HasCaught()) {
     //last_exception = ExceptionString(GetIsolate(), &try_catch);

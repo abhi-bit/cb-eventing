@@ -1,8 +1,39 @@
+import couchbase
+from couchbase.bucket import Bucket
 import json
 from random import randint
 import requests
+import threading
+import time
 
+SLEEP_DURATION = 5
 v8_debug_endpoint = "http://localhost:6061/v8debug/"
+conn_str = "couchbase://localhost/default"
+cb = Bucket(conn_str)
+
+
+def populate_one_doc():
+    ssn1 = str(randint(100, 999))
+    ssn2 = str(randint(10, 99))
+    ssn3 = str(randint(1000, 9999))
+    ssn = ssn1 + "_" + ssn2 + "_" + ssn3
+    key = "v8_debug_test_" + ssn
+    credit_score = randint(600, 800)
+    credit_card_count = randint(1, 5)
+    total_credit_limit = randint(10000, 100000)
+    credit_limit_used = int((randint(0, 9) / 10.0) * total_credit_limit)
+    missed_emi_payments = randint(0, 12)
+
+    value = {'ssn': ssn, 'credit_score': credit_score,
+             'credit_card_count': credit_card_count,
+             'total_credit_limit': total_credit_limit,
+             'credit_limit_used': credit_limit_used,
+             'missed_emi_payments': missed_emi_payments}
+
+    try:
+        cb.upsert(key, value, ttl=0, format=couchbase.FMT_JSON)
+    except:
+        print "Upsert failed for doc id: ", key
 
 
 def fire_continue_request(seq):
@@ -160,9 +191,32 @@ def fire_listbreakpoints_request(seq):
     print "listbreakpoints call: ", r.text
 
 
+def cb_store():
+    # debugging cycle being followed is:
+    # setbreakpoint -> 3 continue -> clearbreakpoint
+    # -> 2 continue -> listbreakpoints
+    populate_one_doc()
+    time.sleep(2)
+    populate_one_doc()
+
+    for i in xrange(3):
+        time.sleep(SLEEP_DURATION)
+        populate_one_doc()
+
+    time.sleep(SLEEP_DURATION)
+    populate_one_doc()
+
+    for i in xrange(2):
+        time.sleep(SLEEP_DURATION)
+        populate_one_doc()
+
+    time.sleep(SLEEP_DURATION)
+    populate_one_doc()
+
+
 def main():
     seq = randint(100, 1000)
-    fire_continue_request(seq)
+    # fire_continue_request(seq)
     # fire_evaluate_request(seq + 1)
     # fire_lookup_request(seq + 2)
     # fire_backtrace_request(seq + 3)
@@ -171,6 +225,28 @@ def main():
     # fire_setbreakpoint_request(seq + 6)
     # fire_clearbreakpoint_request(seq + 7)
     # fire_listbreakpoints_request(seq + 8)
+
+    t = threading.Thread(target=cb_store)
+    t.start()
+
+    fire_setbreakpoint_request(seq + 6)
+    time.sleep(SLEEP_DURATION)
+
+    for i in xrange(3):
+        fire_continue_request(seq)
+        time.sleep(SLEEP_DURATION)
+
+    fire_clearbreakpoint_request(seq + 7)
+    time.sleep(SLEEP_DURATION)
+
+    for i in xrange(2):
+        fire_continue_request(seq)
+        time.sleep(SLEEP_DURATION)
+
+    fire_listbreakpoints_request(seq + 8)
+    time.sleep(SLEEP_DURATION)
+
+    t.join()
 
 if __name__ == "__main__":
     main()

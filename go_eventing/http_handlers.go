@@ -345,13 +345,11 @@ func forwardDebugCommand(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		logging.Infof("Failed to forrward request to 6062")
+		logging.Infof("Failed to forward request to 6062")
 	} else {
-		logging.Infof("Successfully forwarded request to 6062")
-
 		body, _ := ioutil.ReadAll(resp.Body)
-		logging.Infof("forwarded response body: %s", string(body))
 		resp.Body.Close()
+		fmt.Fprintf(w, "%s", string(body))
 	}
 }
 
@@ -366,7 +364,6 @@ func v8DebugHandler(w http.ResponseWriter, r *http.Request) {
 		p := make([]byte, r.ContentLength)
 		r.Body.Read(p)
 		payload := string(p)
-		logging.Infof("Forwaded payload: %s", payload)
 		var response string
 		switch command {
 		case "continue":
@@ -388,7 +385,7 @@ func v8DebugHandler(w http.ResponseWriter, r *http.Request) {
 		case "listbreakpoints":
 			response = handle.SendListBreakpoints(payload)
 		}
-		fmt.Fprintf(w, "V8 Debugger: %s", response)
+		fmt.Fprintf(w, "%s", response)
 	} else {
 		fmt.Fprintf(w, "Application missing")
 		return

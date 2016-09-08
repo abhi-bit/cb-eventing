@@ -362,7 +362,7 @@ func storeBlob(w http.ResponseWriter, r *http.Request) {
 	bucketHandle := appNameBucketHandleMapping[appName]
 	tableLock.Unlock()
 
-	err := bucketHandle.Set("test_key", 60, map[string]interface{}{
+	_, err := bucketHandle.SetWithMeta("test_key", 33554432, 60, map[string]interface{}{
 		"credit_card_count":   3,
 		"credit_score":        781,
 		"total_credit_limit":  15617,

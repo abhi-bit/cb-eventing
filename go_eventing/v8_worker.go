@@ -84,9 +84,9 @@ func handleDcpEvent(handle *worker.Worker, msg []interface{},
 
 		if err != nil {
 			atomic.AddUint64(ops, 1)
-			logging.Infof("Sending key: %s from bucket: %s to handle: %s",
+			logging.Infof("Sending key: %s from bucket: %s to handle: %s flags: %x",
 				string(m.Key), bucketName,
-				workerHTTPReferrerTableBackIndex[handle])
+				workerHTTPReferrerTableBackIndex[handle], m.Flags)
 			logging.Tracef("DCP_MUTATION opcode flag %x cas: %x error: %#v\n",
 				m.Flags, m.Cas, err.Error())
 

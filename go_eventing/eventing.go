@@ -28,6 +28,7 @@ var appHTTPservers map[string][]*HTTPServer
 
 var appMailChanMapping map[string]chan smtpFields
 var appMailSettings map[string]map[string]string
+var appNameBucketHandleMapping map[string]*couchbase.Bucket
 
 type staticAssetInfo struct {
 	appName string
@@ -273,8 +274,23 @@ func setUpEventingApp(appName string) {
 		}
 	}
 
+	srcBucketHandle, err := pool.GetBucket(srcBucket)
+
+	sleep = 1
+	for err != nil {
+		logging.Infof("Bucket: %s missing, retrying after %d seconds, err: %#v",
+			srcBucket, sleep, err)
+		time.Sleep(time.Second * sleep)
+		c, _ = couchbase.Connect(connStr)
+		pool, _ = c.GetPool("default")
+		srcBucketHandle, err = pool.GetBucket(srcBucket)
+		if sleep < 8 {
+			sleep = sleep * 2
+		}
+	}
+
 	cluster := srcEndpoint + ":8091"
-	logging.Infof("clutser: %s auth: %#v\n", cluster, options.auth)
+	logging.Infof("cluster: %s auth: %#v\n", cluster, options.auth)
 	if options.auth != "" {
 		up := strings.Split(options.auth, ":")
 		if _, err := cbauth.InternalRetryDefaultInit(cluster, up[0], up[1]); err != nil {
@@ -294,6 +310,7 @@ func setUpEventingApp(appName string) {
 
 	tableLock.Lock()
 	appDoneChans[appName] = chans
+	appNameBucketHandleMapping[appName] = srcBucketHandle
 	tableLock.Unlock()
 
 	fmt.Printf("Starting up bucket dcp feed for appName: %s with bucket: %s\n",
@@ -330,6 +347,7 @@ func main() {
 	appMailSettings = make(map[string]map[string]string)
 
 	appDoneChans = make(map[string]handleChans)
+	appNameBucketHandleMapping = make(map[string]*couchbase.Bucket)
 	uriPrefixAppMap = make(map[string]*staticAssetInfo)
 	uriPrefixAppnameBackIndex = make(map[string]string)
 
@@ -350,6 +368,9 @@ func main() {
 		http.HandleFunc("/stop_dbg/", stopV8Debugger)
 		http.HandleFunc("/sendmail/", sendMail)
 		http.HandleFunc("/v8debug/", forwardDebugCommand)
+
+		// exposing http endpoint to store blobs in CB via REST call
+		http.HandleFunc("/store_blob/", storeBlob)
 
 		log.Fatal(http.ListenAndServe("localhost:6061", nil))
 	}()

@@ -6,7 +6,7 @@ import requests
 import threading
 import time
 
-SLEEP_DURATION = 5
+SLEEP_DURATION = 3
 v8_debug_endpoint = "http://localhost:6061/v8debug/"
 conn_str = "couchbase://localhost/default"
 cb = Bucket(conn_str)
@@ -61,10 +61,21 @@ def fire_evaluate_request(seq):
     command["arguments"] = dict()
     command["arguments"]["global"] = True
     # command["arguments"]["expression"] = "JSON.stringify(process.version)"
-    command["arguments"]["expression"] = "100 + 300"
-    command["arguments"]["disable_break"] = True
+    # command["arguments"]["expression"] = "100 + 300"
+    # command["arguments"]["expression"] = "JSON.stringify(updated_doc)"
+    # command["arguments"]["expression"] = "updated_doc.toString()"
+    # command["arguments"]["expression"] = "JSON.stringify(updated_doc)"
+    command["arguments"]["expression"] = "v1"
+    command["arguments"]["global"] = True
+    # command["arguments"]["additional_context"] = list()
+    # context = dict()
+    # context["name"] = "string"
+    # context["handle"] = 11
+    # command["arguments"]["additional_context"].append(context)
+    # command["arguments"]["disable_break"] = True
 
     command_to_fire = json.dumps(command)
+    print command_to_fire
     query_params = {"command": "evaluate", "appname": "credit_score"}
     r = requests.post(v8_debug_endpoint, data=command_to_fire,
                       params=query_params)
@@ -214,6 +225,21 @@ def cb_store():
     populate_one_doc()
 
 
+def test_eval():
+    populate_one_doc()
+    time.sleep(2)
+    populate_one_doc()
+
+    for i in xrange(6):
+        time.sleep(SLEEP_DURATION)
+        populate_one_doc()
+
+    time.sleep(SLEEP_DURATION)
+    for i in xrange(10):
+        populate_one_doc()
+        time.sleep(2)
+
+
 def main():
     seq = randint(100, 1000)
     # fire_continue_request(seq)
@@ -226,8 +252,25 @@ def main():
     # fire_clearbreakpoint_request(seq + 7)
     # fire_listbreakpoints_request(seq + 8)
 
+    """"t = threading.Thread(target=test_eval)
+    t.start()
+
+    fire_setbreakpoint_request(seq + 6)
+    time.sleep(SLEEP_DURATION)
+
+    for i in xrange(6):
+        fire_continue_request(seq)
+        time.sleep(SLEEP_DURATION)
+
+    fire_evaluate_request(seq + 1)
+    time.sleep(SLEEP_DURATION)
+
+    t.join()"""
+
     t = threading.Thread(target=cb_store)
     t.start()
+
+    fire_evaluate_request(seq + 1)
 
     fire_setbreakpoint_request(seq + 6)
     time.sleep(SLEEP_DURATION)

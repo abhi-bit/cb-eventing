@@ -62,31 +62,32 @@ int AsciiToUtf16(const char* input_buffer, uint16_t* output_buffer) {
   return i;
 }
 
-bool GetEvaluateResult(char* message, string &buffer) {
+bool GetEvaluateResult(char* message) {
   if (strstr(message, "\"command\":\"evaluate\"") == NULL) {
+    evaluate_result.assign(message);
     return false;
   }
   if (strstr(message, "\"text\":\"") != NULL) {
-    buffer.assign(message);
+    evaluate_result.assign(message);
     return false;
   }
 
   string msg(message);
   rapidjson::Document doc;
   if (doc.Parse(msg.c_str()).HasParseError()) {
-      buffer.assign(message);
+      evaluate_result.assign(message);
       cerr << "Failed to parse v8 debug JSON response" << endl;
       return false;
   }
 
   std::cout << __LINE__ << __FUNCTION__ << "MESSAGE: " << message << std::endl;
   assert(doc.IsObject());
-  string result;
+  /* string result;
   {
       rapidjson::Value& value = doc["body"]["text"];
       result.assign(value.GetString());
-  }
-  buffer.assign(result);
+  }*/
+  evaluate_result.assign(message);
   data_ready = true;
   cv.notify_all();
   return true;
@@ -96,7 +97,7 @@ static void DebugEvaluateHandler(const v8::Debug::Message& message) {
   v8::Local<v8::String> json = message.GetJSON();
   v8::String::Utf8Value utf8(json);
 
-  GetEvaluateResult(*utf8, evaluate_result);
+  GetEvaluateResult(*utf8);
 }
 
 bool SetBreakpointResult(char* message) {
@@ -156,7 +157,7 @@ void ContinueResult(char* message) {
 
   std::cout << __LINE__ << __FUNCTION__ << "MESSAGE: " << message << std::endl;
   assert(doc.IsObject());
-  if (strstr(message, "\"sourceLine\"") != NULL) {
+  /*if (strstr(message, "\"sourceLine\"") != NULL) {
       {
           rapidjson::Value& sourceLine = doc["body"]["sourceLine"];
           rapidjson::Value& sourceColumn = doc["body"]["sourceColumn"];
@@ -172,7 +173,9 @@ void ContinueResult(char* message) {
   } else {
       continue_result.assign(message);
       std::cout << __FUNCTION__ << __LINE__ << continue_result << std::endl;
-  }
+  }*/
+
+  continue_result.assign(message);
   data_ready = true;
   cv.notify_all();
 }
@@ -213,7 +216,7 @@ void ClearBreakpointResult(char* message) {
 
   std::cout << __LINE__ << __FUNCTION__ << "MESSAGE:" << msg << std::endl;
   assert(doc.IsObject());
-  {
+  /*{
       rapidjson::Value& type = doc["type"];
       rapidjson::Value& breakpoints_cleared = doc["body"]["breakpoint"];
       char buf[40];
@@ -222,7 +225,8 @@ void ClearBreakpointResult(char* message) {
       sprintf(buf, "type:%s breakpoints_cleared: %d",
               type.GetString(), breakpoints_cleared.GetInt());
       clear_breakpoint_result.assign(buf);
-  }
+  }*/
+  clear_breakpoint_result.assign(message);
   data_ready = true;
   cv.notify_all();
   return;

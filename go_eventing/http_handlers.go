@@ -353,6 +353,30 @@ func forwardDebugCommand(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func storeBlob(w http.ResponseWriter, r *http.Request) {
+	values := r.URL.Query()
+	appName := values["appname"][0]
+
+	logging.Infof("Setting one blob for app: %s", appName)
+	tableLock.Lock()
+	bucketHandle := appNameBucketHandleMapping[appName]
+	tableLock.Unlock()
+
+	err := bucketHandle.Set("test_key", 60, map[string]interface{}{
+		"credit_card_count":   3,
+		"credit_score":        781,
+		"total_credit_limit":  15617,
+		"ssn":                 "650_57_9991",
+		"credit_limit_used":   7808,
+		"missed_emi_payments": 3})
+
+	if err != nil {
+		fmt.Fprintf(w, "%s", err.Error())
+	} else {
+		fmt.Fprintf(w, "%s\n", "Stored blob in bucket")
+	}
+}
+
 func v8DebugHandler(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	command := values["command"][0]

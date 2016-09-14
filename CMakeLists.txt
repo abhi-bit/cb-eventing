@@ -10,16 +10,21 @@ INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseEventingDep)
 
-INCLUDE_DIRECTORIES(BEFORE /usr/local/include/hiredis)
+INCLUDE_DIRECTORIES(BEFORE ${REDIS_INCLUDE_DIR} ${LIBCOUCHBASE_INCLUDE_DIR})
 
 INCLUDE_DIRECTORIES(AFTER ${ICU_INCLUDE_DIR}
-                          ${V8_INCLUDE_DIR})
+                          ${V8_INCLUDE_DIR}
+                          ${CURL_INCLUDE_DIR}
+                           ${CMAKE_CURRENT_BINARY_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}
+                          ${CMAKE_INSTALL_PREFIX}/include
+                           ${Platform_SOURCE_DIR}/include)
 
 SET(EVENTING_SOURCES worker/binding/bucket.cc worker/binding/http_response.cc 
 		     worker/binding/n1ql.cc worker/binding/parse_deployment.cc
 		     worker/binding/queue.cc worker/binding/worker.cc)
 
-SET(EVENTING_LIBRARIES ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES} ${CURL_LIBRARIES} -lhiredis -lcouchbase)
+SET(EVENTING_LIBRARIES ${V8_LIBRARIES} ${ICU_LIBRARIES} ${JEMALLOC_LIBRARIES} ${CURL_LIBRARIES} ${REDIS_LIBRARIES} ${LIBCOUCHBASE_LIBRARIES} platform )
 ADD_LIBRARY(v8_binding SHARED ${EVENTING_SOURCES})
 TARGET_LINK_LIBRARIES(v8_binding ${EVENTING_LIBRARIES})
 INSTALL(TARGETS v8_binding
@@ -40,6 +45,7 @@ ENDIF (APPLE)
 #)
 #ENDIF(APPLE)
 
+#SET (_ldflags "-L${CMAKE_CURRENT_BINARY_DIR} -lv8_binding")
 SET (_ldflags)
 IF (APPLE)
   # On OS X 10.11 (El Capitan) upwards we can no longer use DYLD_LIBRARY_PATH to locate
@@ -56,14 +62,17 @@ IF (WIN32)
     SET (_eventing_ldflags "${_eventing_ldflags} -linkmode internal")
   ENDIF ()
 ENDIF ()
-#SET (ENV{CGO_LDFLAGS} "$ENV{CGO_LDFLAGS}" "${CMAKE_CURRENT_BINARY_DIR}" "-lv8_binding")
+#SET (ENV{CGO_LDFLAGS} "$ENV{CGO_LDFLAGS}"  "${CMAKE_CURRENT_BINARY_DIR}" " -lv8_binding")
+MESSAGE(STATUS " CGO_INCLUDE_DIRS: ${CMAKE_CURRENT_SOURCE_DIR}")
+SET(CGO_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/worker")
 GoInstall (TARGET go_eventing PACKAGE github.com/abhi-bit/eventing/go_eventing
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.." "${GODEPSDIR}"
   DEPENDS v8_binding
-  CGO_LIBRARY_DIRS "${CMAKE_CURRENT_BINARY_DIR} -lv8_binding"
+  CGO_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/worker"
+  CGO_LIBRARY_DIRS "${CMAKE_CURRENT_BINARY_DIR}"
   LDFLAGS "${_eventing_ldflags}"
   INSTALL_PATH bin OUTPUT go_eventing
-  GOVERSION 1.4.x)
+  GOVERSION 1.6)
 IF (APPLE)
     SET_TARGET_PROPERTIES(go_eventing
                           PROPERTIES

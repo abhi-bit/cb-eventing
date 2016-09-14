@@ -17,6 +17,7 @@
 #include "n1ql.h"
 #include "parse_deployment.h"
 #include "queue.h"
+#include <platform/cbassert.h>
 
 using namespace v8;
 
@@ -70,7 +71,7 @@ bool GetEvaluateResult(char* message, string &buffer) {
       cerr << "Failed to parse v8 debug JSON response" << endl;
   }
 
-  assert(doc.IsObject());
+  cb_assert(doc.IsObject());
   string result;
   {
       rapidjson::Value& value = doc["body"]["text"];
@@ -102,7 +103,7 @@ bool SetBreakpointResult(char* message) {
       cerr << "Failed to parse v8 debug JSON response" << endl;
   }
 
-  assert(doc.IsObject());
+  cb_assert(doc.IsObject());
   {
       rapidjson::Value& line = doc["body"]["line"];
       rapidjson::Value& column = doc["body"]["column"];
@@ -135,7 +136,7 @@ void ContinueResult(char* message) {
       cerr << "Failed to parse v8 debug JSON response" << endl;
   }
 
-  assert(doc.IsObject());
+  cb_assert(doc.IsObject());
   {
       rapidjson::Value& request_seq = doc["request_seq"];
       char buf[20];
@@ -177,7 +178,7 @@ void ClearBreakpointResult(char* message) {
       cerr << "Failed to parse v8 debug JSON response" << endl;
   }
 
-  assert(doc.IsObject());
+  cb_assert(doc.IsObject());
   {
       rapidjson::Value& type = doc["body"]["type"];
       rapidjson::Value& breakpoints_cleared = doc["body"]["breakpoint"];
@@ -221,7 +222,7 @@ void ListBreakpointResult(char* message) {
       cerr << "Failed to parse v8 debug JSON response" << endl;
   }
 
-  assert(doc.IsObject());
+  cb_assert(doc.IsObject());
 
   list_breakpoint_result.assign(message);
 
@@ -504,7 +505,7 @@ void SendMail(const FunctionCallbackInfo<Value>& args) {
   {
     Isolate* isolate = args.GetIsolate();
     w = static_cast<Worker*>(isolate->GetData(0));
-    assert(w->GetIsolate() == isolate);
+    cb_assert(w->GetIsolate() == isolate);
 
     Locker locker(w->GetIsolate());
     HandleScope handle_Scope(isolate);
@@ -513,17 +514,17 @@ void SendMail(const FunctionCallbackInfo<Value>& args) {
     Context::Scope context_scope(context);
 
     Local<Value> m_to = args[0];
-    assert(m_to->IsString());
+    cb_assert(m_to->IsString());
     String::Utf8Value s_m_to(m_to);
     mail_to = ToCString(s_m_to);
 
     Local<Value> m_subject = args[1];
-    assert(m_subject->IsString());
+    cb_assert(m_subject->IsString());
     String::Utf8Value s_m_subject(m_subject);
     mail_subject = ToCString(s_m_subject);
 
     Local<Value> m_body = args[2];
-    assert(m_body->IsString());
+    cb_assert(m_body->IsString());
     String::Utf8Value s_m_body(m_body);
     mail_body = ToCString(s_m_body);
 
@@ -857,7 +858,7 @@ bool Worker::ExecuteScript(Local<String> script) {
 
   Local<Script> compiled_script;
   if (!Script::Compile(context, script).ToLocal(&compiled_script)) {
-    assert(try_catch.HasCaught());
+    cb_assert(try_catch.HasCaught());
     last_exception = ExceptionString(GetIsolate(), &try_catch);
     // printf("Logged: %s\n", last_exception.c_str());
     // The script failed to compile; bail out.
@@ -866,7 +867,7 @@ bool Worker::ExecuteScript(Local<String> script) {
 
   Local<Value> result;
   if (!compiled_script->Run(context).ToLocal(&result)) {
-    assert(try_catch.HasCaught());
+    cb_assert(try_catch.HasCaught());
     last_exception = ExceptionString(GetIsolate(), &try_catch);
     // printf("Logged: %s\n", last_exception.c_str());
     // Running the script failed; bail out.
@@ -964,7 +965,7 @@ void Worker::SendTimerCallback(const char* k) {
     }
 
     string callback_func, doc_id, start_timestamp;
-    assert(doc.IsObject());
+    cb_assert(doc.IsObject());
     {
         rapidjson::Value& cf = doc["callback_func"];
         rapidjson::Value& id = doc["doc_id"];
@@ -1117,7 +1118,7 @@ int Worker::SendDelete(const char *msg) {
   Local<Value> args[1];
   args[0] = String::NewFromUtf8(GetIsolate(), msg);
 
-  assert(!try_catch.HasCaught());
+  cb_assert(!try_catch.HasCaught());
 
   Local<Function> on_doc_delete = Local<Function>::New(GetIsolate(), on_delete_);
   on_doc_delete->Call(context->Global(), 1, args);

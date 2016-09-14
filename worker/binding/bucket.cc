@@ -7,6 +7,7 @@
 #include <string>
 #include<sstream>
 #include <vector>
+#include <arpa/inet.h>
 
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>

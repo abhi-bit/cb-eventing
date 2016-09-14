@@ -1,8 +1,9 @@
 package worker
 
 /*
+#cgo LDFLAGS: -lv8_binding
 #include <stdlib.h>
-#include "binding/binding.h"
+#include <binding/binding.h>
 */
 import "C"
 import "errors"

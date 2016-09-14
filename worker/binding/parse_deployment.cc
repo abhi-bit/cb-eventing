@@ -1,4 +1,5 @@
 #include "parse_deployment.h"
+#include <platform/cbassert.h>
 
 deployment_config* ParseDeployment(const char* app_name) {
   deployment_config* config = new deployment_config();
@@ -17,7 +18,7 @@ deployment_config* ParseDeployment(const char* app_name) {
     exit(1);
   }
 
-  assert(doc.IsObject());
+  cb_assert(doc.IsObject());
 
   {
       rapidjson::Value& buckets = doc["depcfg"]["buckets"];
@@ -25,10 +26,10 @@ deployment_config* ParseDeployment(const char* app_name) {
       rapidjson::Value& workspace = doc["depcfg"]["workspace"];
       rapidjson::Value& source = doc["depcfg"]["source"];
 
-      assert(buckets.IsArray());
-      assert(queues.IsArray());
-      assert(workspace.IsObject());
-      assert(source.IsObject());
+      cb_assert(buckets.IsArray());
+      cb_assert(queues.IsArray());
+      cb_assert(workspace.IsObject());
+      cb_assert(source.IsObject());
 
       map<string, vector<string> > buckets_info;
       for(rapidjson::SizeType i = 0; i < buckets.Size(); i++) {

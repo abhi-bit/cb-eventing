@@ -101,8 +101,8 @@ func handleDcpEvent(handle *worker.Worker, msg []interface{},
 				mEvent, err := json.Marshal(meta)
 				if err == nil {
 					//TODO: check for return code of SendUpdate
-					logging.Infof("Sending DCP_MUTATION to: %s\n",
-						workerHTTPReferrerTableBackIndex[handle])
+					logging.Infof("Sending DCP_MUTATION to: %s meta dump: %#v \n",
+						workerHTTPReferrerTableBackIndex[handle], meta)
 					handle.SendUpdate(string(m.Value), string(mEvent), "json")
 				} else {
 					logging.Infof("Failed to marshal update event: %#v\n", meta)

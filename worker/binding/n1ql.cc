@@ -148,6 +148,7 @@ void N1QL::N1QLEnumGetCall(Local<Name> name,
   lcb_CMDN1QL qcmd= { 0 };
   Rows rows;
 
+  std::cout << "n1ql query fired: " << query << std::endl;
   params = lcb_n1p_new();
   rc = lcb_n1p_setstmtz(params, query.c_str());
   qcmd.callback = query_callback;

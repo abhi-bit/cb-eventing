@@ -683,9 +683,11 @@ Worker::Worker(int tindex, const char* app_name) {
     printf("ERROR Print exception: %s\n", last_exception.c_str());
   }
 
-  string v8_debug_flag("--expose-debug-as=debug");
+  // V8 debugger invocation flags from javascript
+  // disabling it for now, for performance reason
 
-  V8::SetFlagsFromString(v8_debug_flag.c_str(), v8_debug_flag.length());
+  // string v8_debug_flag("--expose-debug-as=debug");
+  // V8::SetFlagsFromString(v8_debug_flag.c_str(), v8_debug_flag.length());
 
   Local<Context> context = Context::New(GetIsolate(), NULL, global);
   context_.Reset(GetIsolate(), context);
@@ -770,7 +772,7 @@ Worker::~Worker() {
 }
 
 void LoadBuiltins(string* out) {
-    ifstream ifs("../worker/binding/builtin.js");
+    ifstream ifs("builtin.js");
     string content((istreambuf_iterator<char> (ifs)),
                    (istreambuf_iterator<char>()));
     out->assign(content);
@@ -949,6 +951,7 @@ const char* Worker::SendHTTPGet(const char* http_req) {
 
   TryCatch try_catch(GetIsolate());
 
+  this->http_response_handle->http_body->http_body.clear();
   Handle<Value> args[2];
   args[0] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), http_req));
   args[1] = this->http_response_handle->WrapHTTPResponseMap();

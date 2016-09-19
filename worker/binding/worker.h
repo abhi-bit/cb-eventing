@@ -115,10 +115,10 @@ class Worker {
 
     string last_exception;
 
-    Bucket* b;
-    N1QL* n;
-    HTTPResponse* r;
-    Queue* q;
+    Bucket* bucket_handle;
+    N1QL* n1ql_handle;
+    HTTPResponse* http_response_handle;
+    Queue* queue_handle;
 
     map<string, string> bucket;
     map<string, string> n1ql;

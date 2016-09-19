@@ -217,8 +217,12 @@ func storeAppSetup(w http.ResponseWriter, r *http.Request) {
 	delete(appHTTPservers, appName)
 
 	if mailChan, ok := appMailChanMapping[appName]; ok {
+		logging.Infof("Closing mail channel for appname: %s chan ptr: %#v",
+			appName, mailChan)
 		close(mailChan)
+		delete(appMailChanMapping, appName)
 	}
+	logging.Infof("appMailChanMapping dump: %#v", appMailChanMapping)
 
 	if handle, ok := workerTable[appName]; ok {
 		logging.Infof("Sending %s workerTable dump: %#v",
@@ -281,8 +285,10 @@ func processMails(appName string) {
 	serverPort := fmt.Sprintf("%s:%s", smtpServer, smtpPort)
 
 	for {
-		select {
-		case sFields := <-mailChan:
+		logging.Infof("Size of mailChan: %d mailchan ptr: %#v",
+			len(mailChan), mailChan)
+		sFields, more := <-mailChan
+		if more {
 			msg := "From: " + senderMailID + "\n" +
 				"To: " + sFields.To + "\n" +
 				"Subject: " + sFields.Subject + "\n\n" +
@@ -303,6 +309,10 @@ func processMails(appName string) {
 			} else {
 				logging.Infof("Successfully sent mail")
 			}
+		} else {
+			logging.Infof("mailChan closed for appname: %s mailchan ptr: %#v",
+				appName, mailChan)
+			return
 		}
 	}
 }
@@ -330,8 +340,11 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 	mailChan := appMailChanMapping[appName]
 	tableLock.Unlock()
 
+	logging.Infof("Got call from CGO to send mail, struct dump: %#v",
+		sFields)
 	mailChan <- sFields
 }
+
 func forwardDebugCommand(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	body, _ := ioutil.ReadAll(r.Body)

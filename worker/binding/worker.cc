@@ -709,14 +709,14 @@ Worker::Worker(int tindex, const char* app_name) {
             string bucket_name = result->component_configs["buckets"][bucket_alias][0];
             string endpoint(cb_cluster_endpoint);
 
-            b = new Bucket(this,
+            bucket_handle = new Bucket(this,
                            bucket_name.c_str(),
                            endpoint.c_str(),
                            bucket_alias.c_str());
           }
       }
 
-      n = new N1QL(this,
+      n1ql_handle = new N1QL(this,
                    cb_cluster_bucket.c_str(),
                    cb_cluster_endpoint.c_str(),
                    "_n1ql");
@@ -729,7 +729,7 @@ Worker::Worker(int tindex, const char* app_name) {
             string queue_alias = result->component_configs["queue"][provider][2];
             string queue_name = result->component_configs["queue"][provider][3];
 
-            q = new Queue(this,
+            queue_handle = new Queue(this,
                           provider.c_str(),
                           endpoint.c_str(),
                           queue_alias.c_str(),
@@ -738,7 +738,7 @@ Worker::Worker(int tindex, const char* app_name) {
 
       }
   }
-  r = new HTTPResponse(this);
+  http_response_handle = new HTTPResponse(this);
 
   // Register a lcb_t handle for storing timer based callbacks in CB
   // TODO: Fix the hardcoding i.e. allow customer to create
@@ -878,17 +878,21 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   on_http_post_.Reset(GetIsolate(), on_http_post_fun);
 
   //TODO: return proper exit codes
-  if (!b->Initialize(this, &bucket)) {
-    cerr << "Error initializing bucket handler" << endl;
-    return FAILED_INIT_BUCKET_HANDLE;
+  if (bucket_handle) {
+    if (!bucket_handle->Initialize(this, &bucket)) {
+      cerr << "Error initializing bucket handler" << endl;
+      return FAILED_INIT_BUCKET_HANDLE;
+    }
   }
-  if (!n->Initialize(this, &n1ql)) {
+  if (!n1ql_handle->Initialize(this, &n1ql)) {
     cerr << "Error initializing n1ql handler" << endl;
     return FAILED_INIT_N1QL_HANDLE;
-  }
-  if (!q->Initialize(this, &queue)) {
-    cerr << "Error initializing queue handler" << endl;
-    return FAILED_INIT_QUEUE_HANDLE;
+    }
+  if (queue_handle) {
+    if (!queue_handle->Initialize(this, &queue)) {
+      cerr << "Error initializing queue handler" << endl;
+      return FAILED_INIT_QUEUE_HANDLE;
+    }
   }
 
   // Wrap around the lcb handle into v8 isolate
@@ -947,7 +951,7 @@ const char* Worker::SendHTTPGet(const char* http_req) {
 
   Handle<Value> args[2];
   args[0] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), http_req));
-  args[1] = this->r->WrapHTTPResponseMap();
+  args[1] = this->http_response_handle->WrapHTTPResponseMap();
 
   if(try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
@@ -958,7 +962,7 @@ const char* Worker::SendHTTPGet(const char* http_req) {
 
   on_http_get->Call(context->Global(), 2, args);
 
-  return this->r->ConvertMapToJson();
+  return this->http_response_handle->ConvertMapToJson();
 }
 
 const char* Worker::SendHTTPPost(const char* http_req) {
@@ -973,7 +977,7 @@ const char* Worker::SendHTTPPost(const char* http_req) {
 
   Handle<Value> args[2];
   args[0] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), http_req));
-  args[1] = this->r->WrapHTTPResponseMap();
+  args[1] = this->http_response_handle->WrapHTTPResponseMap();
 
   if(try_catch.HasCaught()) {
     last_exception = ExceptionString(GetIsolate(), &try_catch);
@@ -984,7 +988,7 @@ const char* Worker::SendHTTPPost(const char* http_req) {
 
   on_http_post->Call(context->Global(), 2, args);
 
-  return this->r->ConvertMapToJson();
+  return this->http_response_handle->ConvertMapToJson();
 }
 
 void Worker::SendTimerCallback(const char* k) {
@@ -1013,7 +1017,6 @@ void Worker::SendTimerCallback(const char* k) {
       }
 
       string callback_func, doc_id, start_timestamp;
-      std::cout << __LINE__ << __FUNCTION__ << std::endl;
       assert(doc.IsObject());
       {
           rapidjson::Value& cf = doc["callback_func"];

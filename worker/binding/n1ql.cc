@@ -120,7 +120,7 @@ bool N1QL::InstallMaps(map<string, string> *n1ql) {
 
   Local<Context> context = Local<Context>::New(GetIsolate(), context_);
 
-  // cout << "Registering handler for n1ql_alias: " << n1ql_alias.c_str() << endl;
+  cout << "Registering handler for n1ql_alias: " << n1ql_alias.c_str() << endl;
   // Set the options object as a property on the global object.
 
   context->Global()

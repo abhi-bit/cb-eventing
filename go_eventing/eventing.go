@@ -137,7 +137,7 @@ func performAppHTTPSetup(appName string) {
 			regexpHandler.HandleFunc(regexp.MustCompile(serverURIRegexp),
 				handleJsRequests)
 
-			log.Printf("Started listening on server:port: %s on endpoint: %s\n",
+			logging.Infof("Started listening on server:port: %s on endpoint: %s\n",
 				serverPortCombo, serverURIRegexp)
 
 			tableLock.Lock()
@@ -191,6 +191,9 @@ func setUpMailServer(appName string) {
 		return
 	}
 
+	logging.Infof("Setting up mail server for appname: %s chan ptr: %#v",
+		appName, mailChan)
+
 	tableLock.Lock()
 	defer tableLock.Unlock()
 	appMailChanMapping[appName] = mailChan
@@ -213,13 +216,15 @@ func getMailSettings(appName string) (string, string, string, string) {
 		}
 
 		config := app.DeploymentConfig.(map[string]interface{})
-		mailSettings := config["mail_settings"].(map[string]interface{})
+		if _, ok := config["mail_settings"]; ok {
+			mailSettings := config["mail_settings"].(map[string]interface{})
 
-		smtpServer := mailSettings["smtp_server"].(string)
-		smtpPort := mailSettings["smtp_port"].(string)
-		senderMailID := mailSettings["sender_mail_id"].(string)
-		mailPassword := mailSettings["password"].(string)
-		return smtpServer, smtpPort, senderMailID, mailPassword
+			smtpServer := mailSettings["smtp_server"].(string)
+			smtpPort := mailSettings["smtp_port"].(string)
+			senderMailID := mailSettings["sender_mail_id"].(string)
+			mailPassword := mailSettings["password"].(string)
+			return smtpServer, smtpPort, senderMailID, mailPassword
+		}
 	}
 	return "", "", "", ""
 }
@@ -250,7 +255,7 @@ func getSource(appName string) (string, string, string) {
 func setUpEventingApp(appName string) {
 	srcBucket, metaBucket, srcEndpoint := getSource(appName)
 	// TODO: return if any of the above fields are missing
-	log.Printf("srcBucket: %s metadata bucket: %s srcEndpoint: %s",
+	logging.Infof("srcBucket: %s metadata bucket: %s srcEndpoint: %s",
 		srcBucket, metaBucket, srcEndpoint)
 
 	connStr := "http://" + srcEndpoint + ":8091"
@@ -376,7 +381,7 @@ func main() {
 	}()
 
 	pwd, _ := os.Getwd()
-	logging.Infof("ABHI: Current working dir: %s", pwd)
+	logging.Infof("Eventing Service: Current working dir: %s", pwd)
 	files, err := ioutil.ReadDir("./apps/")
 	if err != nil {
 		logging.Infof("Failed to read application directory, is it missing?\n")
@@ -391,6 +396,7 @@ func main() {
 	for {
 		select {
 		case appName := <-appSetup:
+			logging.Infof("Got message to setup appname: %s", appName)
 			go performAppHTTPSetup(appName)
 			setUpMailServer(appName)
 			go processMails(appName)

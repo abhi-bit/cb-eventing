@@ -693,6 +693,7 @@ Worker::Worker(int tindex, const char* app_name) {
   context_.Reset(GetIsolate(), context);
 
   app_name_ = app_name;
+  start_debug_flag = false;
   deployment_config* result = ParseDeployment(app_name);
 
   cb_cluster_endpoint.assign(result->source_endpoint);
@@ -1113,6 +1114,10 @@ const char* Worker::SendClearBreakpointRequest(const char* command) {
   return clear_breakpoint_result.c_str();
 }
 
+void Worker::StartV8Debugger() { start_debug_flag = true; }
+
+void Worker::StopV8Debugger() { start_debug_flag = false; }
+
 const char* Worker::SendListBreakpointsRequest(const char* command) {
   const int kBufferSize = 1000;
   uint16_t buffer[kBufferSize];
@@ -1156,7 +1161,9 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
 
   Local<Function> on_doc_update = Local<Function>::New(GetIsolate(), on_update_);
   on_doc_update->Call(context->Global(), 2, args);
-  Debug::ProcessDebugMessages(GetIsolate());
+
+  if (start_debug_flag)
+    Debug::ProcessDebugMessages(GetIsolate());
 
   data_ready = true;
   cv.notify_all();
@@ -1187,7 +1194,9 @@ int Worker::SendDelete(const char *msg) {
 
   Local<Function> on_doc_delete = Local<Function>::New(GetIsolate(), on_delete_);
   on_doc_delete->Call(context->Global(), 1, args);
-  Debug::ProcessDebugMessages(GetIsolate());
+
+  if (start_debug_flag)
+    Debug::ProcessDebugMessages(GetIsolate());
 
   data_ready = true;
   cv.notify_all();
@@ -1246,6 +1255,14 @@ int worker_load(worker* w, char* name_s, char* source_s) {
 
 void worker_send_timer_callback(worker* w, const char* keys) {
     w->w->SendTimerCallback(keys);
+}
+
+void start_v8_debugger(worker* w) {
+    w->w->StartV8Debugger();
+}
+
+void stop_v8_debugger(worker* w) {
+    w->w->StopV8Debugger();
 }
 
 const char* worker_send_continue_request(worker* w, const char* request) {

@@ -28,6 +28,9 @@ const char* worker_send_http_post(worker* w, const char* http_req);
 
 void worker_send_timer_callback(worker* w, const char* keys);
 
+void start_v8_debugger(worker* w);
+void stop_v8_debugger(worker* w);
+
 const char* worker_send_continue_request(worker* w, const char* request);
 const char* worker_send_evaluate_request(worker* w, const char* request);
 const char* worker_send_lookup_request(worker* w, const char* request);

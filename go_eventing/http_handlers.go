@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/abhi-bit/eventing/worker"
 	"github.com/couchbase/indexing/secondary/logging"
 )
 
@@ -256,13 +257,25 @@ func startV8Debugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go func(net.Listener) {
+	values := r.URL.Query()
+	appName := values["name"][0]
+
+	var handle *worker.Worker
+	var ok bool
+	tableLock.Lock()
+	if handle, ok = workerTable[appName]; ok {
+		handle.StartV8Debugger()
+	}
+	tableLock.Unlock()
+
+	go func(net.Listener, *worker.Worker) {
 		runtime.LockOSThread()
 		httpServer := createHTTPServer(v8TCPListener)
 		server := http.Server{}
 		server.Serve(httpServer)
-		logging.Infof("Stopped V8 debuuger goroutine cleanly")
-	}(v8TCPListener)
+		handle.StopV8Debugger()
+		logging.Infof("Stopped V8 debugger goroutine cleanly")
+	}(v8TCPListener, handle)
 
 	fmt.Fprintf(w, "Started V8 debugger thread\n")
 }

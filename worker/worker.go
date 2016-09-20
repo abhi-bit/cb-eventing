@@ -176,6 +176,14 @@ func (w *Worker) SendTimerCallback(k string) {
 	return
 }
 
+func (w *Worker) StartV8Debugger() {
+	C.start_v8_debugger(w.worker.cWorker)
+}
+
+func (w *Worker) StopV8Debugger() {
+	C.stop_v8_debugger(w.worker.cWorker)
+}
+
 // SendContinueRequest function
 func (w *Worker) SendContinueRequest(r string) string {
 	request := C.CString(r)

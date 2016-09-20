@@ -25,5 +25,5 @@ for i in xrange(int(doc_count)):
     try:
         cb.upsert(user_id, value, format=couchbase.FMT_JSON)
     except:
-        print "Upsert failed for doc id: ", key
+        print "Upsert failed for doc id: ", user_id
         continue

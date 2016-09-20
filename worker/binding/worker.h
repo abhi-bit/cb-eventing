@@ -77,6 +77,9 @@ class Worker {
     const char* SendHTTPPost(const char* http_req);
     void SendTimerCallback(const char* keys);
 
+    void StartV8Debugger();
+    void StopV8Debugger();
+
     const char* SendContinueRequest(const char* request);
     const char* SendEvaluateRequest(const char* request);
     const char* SendLookupRequest(const char* request);
@@ -104,6 +107,7 @@ class Worker {
     string script_to_execute_;
     int table_index;
     string app_name_;
+    bool start_debug_flag;
 
   private:
     bool ExecuteScript(Local<String> script);

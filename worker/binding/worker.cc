@@ -978,6 +978,7 @@ const char* Worker::SendHTTPPost(const char* http_req) {
 
   TryCatch try_catch(GetIsolate());
 
+  this->http_response_handle->http_body->http_body.clear();
   Handle<Value> args[2];
   args[0] = v8::JSON::Parse(String::NewFromUtf8(GetIsolate(), http_req));
   args[1] = this->http_response_handle->WrapHTTPResponseMap();

@@ -11,6 +11,8 @@
 #include <thread>
 #include <typeinfo>
 
+#include <phosphor/phosphor.h>
+
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>
@@ -1132,6 +1134,7 @@ const char* Worker::SendListBreakpointsRequest(const char* command) {
 }
 
 int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
+  TRACE_EVENT_START("worker", "Worker::SendUpdate()/cgo_binding", "");
   Locker locker(GetIsolate());
   Isolate::Scope isolate_scope(GetIsolate());
   HandleScope handle_scope(GetIsolate());
@@ -1160,7 +1163,9 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
   }
 
   Local<Function> on_doc_update = Local<Function>::New(GetIsolate(), on_update_);
+  TRACE_EVENT_START("worker", "Worker::SendUpdate()/js-callback", "");
   on_doc_update->Call(context->Global(), 2, args);
+  TRACE_EVENT_END("worker", "Worker::SendUpdate()/js-callback", "");
 
   if (start_debug_flag)
     Debug::ProcessDebugMessages(GetIsolate());
@@ -1168,6 +1173,7 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
   data_ready = true;
   cv.notify_all();
 
+  TRACE_EVENT_END("worker", "Worker::SendUpdate()/cgo_binding", "");
   if (try_catch.HasCaught()) {
     cout << "Exception message: "
          <<  ExceptionString(GetIsolate(), &try_catch) << endl;
@@ -1178,6 +1184,7 @@ int Worker::SendUpdate(const char* value, const char* meta, const char* type ) {
 }
 
 int Worker::SendDelete(const char *msg) {
+  TRACE_EVENT_START("worker", "Worker::SendDelete()/cgo_binding", "");
   Locker locker(GetIsolate());
   Isolate::Scope isolate_scope(GetIsolate());
   HandleScope handle_scope(GetIsolate());
@@ -1193,7 +1200,9 @@ int Worker::SendDelete(const char *msg) {
   assert(!try_catch.HasCaught());
 
   Local<Function> on_doc_delete = Local<Function>::New(GetIsolate(), on_delete_);
+  TRACE_EVENT_START("worker", "Worker::SendDelete()/js-callback", "");
   on_doc_delete->Call(context->Global(), 1, args);
+  TRACE_EVENT_END("worker", "Worker::SendDelete()/js-callback-end", "");
 
   if (start_debug_flag)
     Debug::ProcessDebugMessages(GetIsolate());
@@ -1201,6 +1210,7 @@ int Worker::SendDelete(const char *msg) {
   data_ready = true;
   cv.notify_all();
 
+  TRACE_EVENT_END("worker", "Worker::SendDelete()/cgo_binding_end", "");
   if (try_catch.HasCaught()) {
     //last_exception = ExceptionString(GetIsolate(), &try_catch);
     return ON_DELETE_CALL_FAIL;

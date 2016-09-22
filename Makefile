@@ -2,6 +2,7 @@ CXX=clang++
 CXXFLAGS=-O3 -c -fPIC -std=c++11
 
 CBDEPS_DIR=/Users/$(USER)/.cbdepscache/
+PHOSPHOR_INCLUDE=/var/tmp/repos/phosphor/include/
 CGO_LDFLAGS="-L/Users/$(USER)/.cbdepscache/lib -lv8_binding"
 DYLD_LIBRARY_PATH=/Users/$(USER)/.cbdepscache/lib
 
@@ -10,8 +11,9 @@ SOURCE_FILES=worker/binding/bucket.cc worker/binding/http_response.cc \
 						 worker/binding/queue.cc worker/binding/worker.cc
 OBJECT_FILES=bucket.o http_response.o n1ql.o parse_deployment.o queue.o worker.o
 
-INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/usr/local/include/hiredis
-LDFLAGS=-dynamiclib -L$(CBDEPS_DIR)lib/ -lv8 -lcouchbase -ljemalloc -lhiredis -lcurl
+INCLUDE_DIRS=-I$(CBDEPS_DIR) -I/usr/local/include/hiredis -I$(PHOSPHOR_INCLUDE)
+LDFLAGS=-dynamiclib -L$(CBDEPS_DIR)lib/ -lv8 \
+				-lcouchbase -ljemalloc -lhiredis -lcurl -lphosphor
 V8_BINDING_LIB=libv8_binding.dylib
 
 binding:
@@ -21,7 +23,7 @@ binding:
 	rm -rf $(OBJECT_FILES)
 
 go:
-	cd go_eventing; CGO_LDFLAGS=$(CGO_LDFLAGS) GOOS=darwin go build -race -ldflags="-s -w"
+	cd go_eventing; CGO_LDFLAGS=$(CGO_LDFLAGS) GOOS=darwin go build -ldflags="-s -w"
 
 all: binding go
 

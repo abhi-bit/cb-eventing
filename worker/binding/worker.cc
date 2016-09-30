@@ -799,7 +799,7 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   content.assign(source_s);
 
   // Preprocessor for allowing queue operations
-  std::regex enqueue("(enqueue\\((.*)\\, (.*)\\)))");
+  std::regex enqueue("(enqueue\\((.*)\\, (.*)\\))");
   std::smatch queue_m;
 
   while (std::regex_search(content, queue_m, enqueue)) {
@@ -831,7 +831,7 @@ int Worker::WorkerLoad(char* name_s, char* source_s) {
   script_to_execute += temp;
   script_to_execute.append(builtin_functions);
 
-  Local<String> name = String::NewFromUtf8(GetIsolate(), name_s);
+  // Local<String> name = String::NewFromUtf8(GetIsolate(), name_s);
   Local<String> source = String::NewFromUtf8(GetIsolate(),
                                              script_to_execute.c_str());
 

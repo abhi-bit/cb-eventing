@@ -7,7 +7,7 @@
 #include <string>
 #include<sstream>
 #include <vector>
-
+#include <arpa/inet.h>
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>
@@ -16,6 +16,7 @@
 #include <include/libplatform/libplatform.h>
 
 #include "bucket.h"
+#include "event_assert.h"
 
 using namespace std;
 using namespace v8;

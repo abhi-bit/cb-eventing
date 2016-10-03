@@ -1,4 +1,5 @@
 #include "parse_deployment.h"
+#include "event_assert.h"
 
 deployment_config* ParseDeployment(const char* app_name) {
   deployment_config* config = new deployment_config();

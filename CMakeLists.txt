@@ -79,6 +79,11 @@ IF (APPLE)
                           INSTALL_RPATH "@rpath")
 ENDIF (APPLE)
 
+FILE(COPY ./worker/binding/builtin.js DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)
+FILE(COPY ./go_eventing/apps DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase/)
+FILE(COPY ./go_eventing/apps DESTINATION ${ns_server_SOURCE_DIR})
+
+
 #IF (APPLE)
 #EXECUTE_PROCESS(
 #COMMAND install_name_tool -change libv8_binding.dylib ${CMAKE_INSTALL_PREFIX}/lib/libv8_binding ${CMAKE_INSTALL_PREFIX}/bin/go_eventing

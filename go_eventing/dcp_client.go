@@ -15,6 +15,8 @@ var options struct {
 	buckets    []string // buckets to connect with
 	maxVbno    int      // maximum number of vbuckets
 	kvaddrs    []string
+	kvport     string
+	restport   string
 	stats      int // periodic timeout(ms) to print stats, 0 will disable
 	printflogs bool
 	auth       string

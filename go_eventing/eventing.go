@@ -62,6 +62,10 @@ func argParse() {
 
 	flag.IntVar(&options.maxVbno, "maxvb", 1024,
 		"maximum number of vbuckets")
+	flag.StringVar(&options.kvport, "kvport", "",
+		"kv port to connect")
+	flag.StringVar(&options.restport, "restport", "",
+		"ns_server port to connect")
 	flag.IntVar(&options.stats, "stats", 100000,
 		"periodic timeout in mS, to print statistics, `0` will disable stats")
 	flag.BoolVar(&options.printflogs, "flogs", false,
@@ -153,7 +157,7 @@ func performAppHTTPSetup(appName string) {
 			tableLock.Unlock()
 
 			_, metaBucket, srcEndpoint := getSource(appName)
-			connStr := "http://" + srcEndpoint + ":8091"
+			connStr := "http://" + srcEndpoint + ":" + options.restport
 
 			c, err := couchbase.Connect(connStr)
 			pool, err := c.GetPool("default")
@@ -258,7 +262,7 @@ func setUpEventingApp(appName string) {
 	logging.Infof("srcBucket: %s metadata bucket: %s srcEndpoint: %s",
 		srcBucket, metaBucket, srcEndpoint)
 
-	connStr := "http://" + srcEndpoint + ":8091"
+	connStr := "http://" + srcEndpoint + ":" + options.restport
 
 	c, err := couchbase.Connect(connStr)
 	pool, err := c.GetPool("default")
@@ -303,7 +307,7 @@ func setUpEventingApp(appName string) {
 		}
 	}
 
-	kvaddr := srcEndpoint + ":11210"
+	kvaddr := srcEndpoint + ":" + options.kvport
 	kvaddrs := []string{kvaddr}
 
 	// Mutation channel for source bucket

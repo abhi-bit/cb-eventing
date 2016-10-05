@@ -22,6 +22,7 @@
 #include "n1ql.h"
 #include "parse_deployment.h"
 #include "queue.h"
+#include "event_assert.h"
 
 using namespace v8;
 

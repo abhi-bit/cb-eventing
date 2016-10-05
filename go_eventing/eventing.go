@@ -298,7 +298,7 @@ func setUpEventingApp(appName string) {
 		}
 	}
 
-	cluster := srcEndpoint + ":8091"
+	cluster := srcEndpoint + ":" + options.restport
 	logging.Infof("cluster: %s auth: %#v\n", cluster, options.auth)
 	if options.auth != "" {
 		up := strings.Split(options.auth, ":")

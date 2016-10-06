@@ -82,6 +82,8 @@ ENDIF (APPLE)
 FILE(COPY ./worker/binding/builtin.js DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)
 FILE(COPY ./go_eventing/apps DESTINATION ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase/)
 FILE(COPY ./go_eventing/apps DESTINATION ${ns_server_SOURCE_DIR})
+FILE(REMOVE ${CMAKE_INSTALL_PREFIX}/var/lib/couchbase/apps/credit_score)
+FILE(REMOVE ${ns_server_SOURCE_DIR}/apps/credit_score)
 
 
 #IF (APPLE)

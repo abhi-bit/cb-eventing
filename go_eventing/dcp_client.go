@@ -56,6 +56,27 @@ func startBucket(cluster, bucketn string,
 		"numConnections": 1,
 	}
 
+	vbnos := listOfVbnos(options.maxVbno)
+
+	flogs, err := b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
+	sleep = 1
+	for err != nil {
+		logging.Infof("Unable to get DCP Failover logs, retrying after %d seconds\n",
+			sleep)
+		time.Sleep(time.Second * sleep)
+
+		b.Refresh()
+		flogs, err = b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
+
+		if sleep < 8 {
+			sleep = sleep * 2
+		}
+	}
+
+	if options.printflogs {
+		printFlogs(vbnos, flogs)
+	}
+
 	dcpFeed, err := b.StartDcpFeedOver(
 		couchbase.NewDcpFeedName("eventing"),
 		uint32(0), options.kvaddrs, 0xABCD, dcpConfig)
@@ -71,26 +92,6 @@ func startBucket(cluster, bucketn string,
 		if sleep < 8 {
 			sleep = sleep * 2
 		}
-	}
-
-	vbnos := listOfVbnos(options.maxVbno)
-
-	flogs, err := b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
-	sleep = 1
-	for err != nil {
-		logging.Infof("Unable to get DCP Failover logs, retrying after %d seconds\n",
-			sleep)
-		time.Sleep(time.Second * sleep)
-
-		flogs, err = b.GetFailoverLogs(0xABCD, vbnos, dcpConfig)
-
-		if sleep < 8 {
-			sleep = sleep * 2
-		}
-	}
-
-	if options.printflogs {
-		printFlogs(vbnos, flogs)
 	}
 
 	go startDcp(dcpFeed, flogs, chans)
@@ -113,6 +114,8 @@ func startDcp(dcpFeed *couchbase.DcpFeed, flogs couchbase.FailoverLog,
 	for vbno, flog := range flogs {
 		x := flog[len(flog)-1] // map[uint16][][2]uint64
 		opaque, flags, vbuuid := uint16(vbno), uint32(0), x[0]
+		logging.Tracef("vbno: %v# flog: %#v vbuuid: %#v opaque: %#v flags: %#v",
+			vbno, flog, vbuuid, opaque, flags)
 		err := dcpFeed.DcpRequestStream(
 			vbno, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
 		mf(err, fmt.Sprintf("stream-req for %v failed", vbno))

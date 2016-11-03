@@ -19,10 +19,6 @@ import (
 
 var v8TCPListener net.Listener
 
-func init() {
-	http.HandleFunc("/debug", v8DebugHandler)
-}
-
 type httpRequest struct {
 	Path   string            `json:"path"`
 	Host   string            `json:"host"`

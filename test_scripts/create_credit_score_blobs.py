@@ -29,10 +29,11 @@ for i in xrange(int(doc_count)):
              'credit_card_count': credit_card_count,
              'total_credit_limit': total_credit_limit,
              'credit_limit_used': credit_limit_used,
-             'missed_emi_payments': missed_emi_payments}
+             'missed_emi_payments': missed_emi_payments,
+             'type': 'credit_score'}
 
     try:
-        cb.upsert(key, value, ttl=5, format=couchbase.FMT_JSON)
+        cb.upsert(key, value, ttl=0, format=couchbase.FMT_JSON)
     except:
         print "Upsert failed for doc id: ", key
         continue
